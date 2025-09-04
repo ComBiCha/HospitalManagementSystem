@@ -164,8 +164,8 @@ services:
       - RabbitMQ__Port=5672
       - RabbitMQ__UserName=guest
       - RabbitMQ__Password=guest
-      - Stripe__PublishableKey=pk_test_51S3UfIFkuPFy3lADPYhc1vpWmvExBWlcmlsoommBJlR8041rkardUtKcXxqLcthA7lLiBGEfAYNUegDVsjrSTbLJ00QGFjJ1Rd
-      - Stripe__SecretKey=sk_test_51S3UfIFkuPFy3lADlMZ0av334rGaElnrKh6PkDdylwPt7mhIy0vhmmL57UeWost5JGO5henRFdP60RnXZ8t7k7dn00qgeu5lPx
+      - Stripe__PublishableKey=${STRIPE_PUBLISHABLE_KEY}
+      - Stripe__SecretKey=${STRIPE_SECRET_KEY}
     ports:
       - "7001:80"
     depends_on:

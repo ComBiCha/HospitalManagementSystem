@@ -30,12 +30,20 @@ bld/
 # Docker
 .dockerignore
 
-# Environment variables
+# Environment variables and secrets
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+
+# API Keys and sensitive configuration
+appsettings.Production.json
+appsettings.Staging.json
+**/appsettings.secrets.json
+
+# Stripe
+stripe-cli.log
 
 # Logs
 logs
