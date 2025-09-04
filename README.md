@@ -33,38 +33,17 @@ This project demonstrates microservices architecture with the following services
 - Docker Desktop
 - PostgreSQL (via Docker)
 - Git
-- Stripe Account (for payment processing)
 
-### Environment Setup
+### Running with Docker Compose
 
-1. **Clone the repository:**
+1. Clone the repository:
 ```bash
 git clone https://github.com/ComBiCha/HospitalManagementSystem.git
 cd HospitalManagementSystem
 ```
 
-2. **Setup environment variables:**
+2. Start all services:
 ```bash
-# Copy the example environment file
-cp .env.example .env
-
-# Edit .env file with your actual values
-# Get Stripe keys from: https://dashboard.stripe.com/apikeys
-```
-
-3. **Configure Stripe (Required for BillingService):**
-   - Sign up at [Stripe Dashboard](https://dashboard.stripe.com)
-   - Get your Test API Keys from the Developers section
-   - Update `.env` file with your keys:
-     ```env
-     STRIPE_PUBLISHABLE_KEY=pk_test_your_actual_key_here
-     STRIPE_SECRET_KEY=sk_test_your_actual_secret_key_here
-     ```
-
-### Running with Docker Compose
-
-```bash
-# Start all services
 docker compose up -d
 ```
 
@@ -184,17 +163,8 @@ curl -X POST \
 
 - **JWT Authentication**: All services require valid JWT tokens
 - **Role-based Authorization**: Different endpoints require specific roles (Doctor, Patient, Admin)
-- **Environment Variables**: Sensitive data stored in environment variables, not in code
-- **API Key Protection**: Stripe keys and sensitive data properly secured in `.env` files
-- **Secret Scanning**: GitHub secret scanning enabled to prevent accidental key exposure
-
-## ⚠️ Important Security Notes
-
-1. **Never commit real API keys to version control**
-2. **Use test keys only for development**
-3. **Set up proper environment variables in production**
-4. **Rotate keys regularly**
-5. **Use GitHub Secrets for CI/CD**
+- **CORS Configuration**: Properly configured for development and production
+- **API Key Protection**: Stripe keys and sensitive data properly secured
 
 ## 📁 Project Structure
 
