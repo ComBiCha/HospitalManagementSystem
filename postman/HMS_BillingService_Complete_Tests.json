@@ -1,0 +1,886 @@
+{
+  "info": {
+    "name": "HMS BillingService - Billing Strategy Tests",
+    "description": "Complete test collection for HMS BillingService with Factory and Strategy Patterns - Testing Insurance, SelfPay, and Corporate billing strategies",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://localhost:7001/api",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "insurance_stripe_billing_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "selfpay_cash_billing_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "corporate_stripe_billing_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Generate Admin JWT Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('jwt_token', jsonData.token);",
+                  "    console.log('Admin JWT Token set:', jsonData.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"userId\": 1,\n    \"role\": \"Admin\",\n    \"patientId\": null,\n    \"doctorId\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/test/generate-token",
+              "host": ["{{base_url}}"],
+              "path": ["test", "generate-token"]
+            }
+          }
+        },
+        {
+          "name": "Generate Patient JWT Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('patient_jwt_token', jsonData.token);",
+                  "    console.log('Patient JWT Token set:', jsonData.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"userId\": 2,\n    \"role\": \"Patient\",\n    \"patientId\": 1,\n    \"doctorId\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/test/generate-token",
+              "host": ["{{base_url}}"],
+              "path": ["test", "generate-token"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Service Health Check",
+      "item": [
+        {
+          "name": "Get Service Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://localhost:7001/",
+              "protocol": "https",
+              "host": ["localhost"],
+              "port": "7001",
+              "path": [""]
+            }
+          }
+        },
+        {
+          "name": "Get Available Payment Methods",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Payment methods should include Stripe and Cash', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.include('Stripe');",
+                  "    pm.expect(jsonData).to.include('Cash');",
+                  "    console.log('Available payment methods:', jsonData);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/billings/payment-methods",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "payment-methods"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Insurance Billing Strategy - Stripe Payment",
+      "item": [
+        {
+          "name": "1. Create Insurance Billing with Stripe",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('insurance_stripe_billing_id', jsonData.id);",
+                  "    console.log('Insurance Billing created with ID:', jsonData.id);",
+                  "    ",
+                  "    pm.test('Insurance Billing created successfully', function () {",
+                  "        pm.expect(jsonData.paymentMethod).to.eql('Stripe');",
+                  "        pm.expect(jsonData.status).to.eql('Pending');",
+                  "        pm.expect(jsonData.amount).to.eql(500.00);",
+                  "        pm.expect(jsonData.billingType).to.eql('Insurance');",
+                  "        pm.expect(jsonData.totalAmount).to.eql(125.00); // 80% coverage + 25 processing fee",
+                  "        pm.expect(jsonData.invoiceNumber).to.include('INS-');",
+                  "        pm.expect(jsonData.insuranceNumber).to.eql('INS-12345-ABC');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"appointmentId\": 1,\n    \"patientId\": 1,\n    \"amount\": 500.00,\n    \"billingType\": \"Insurance\",\n    \"insuranceNumber\": \"INS-12345-ABC\",\n    \"paymentMethod\": \"Stripe\",\n    \"description\": \"MRI Scan - Insurance Coverage Test\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings",
+              "host": ["{{base_url}}"],
+              "path": ["billings"]
+            }
+          }
+        },
+        {
+          "name": "2. Process Insurance Stripe Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Insurance Stripe Payment creates checkout session with URL', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.isSuccess).to.be.true;",
+                  "    pm.expect(jsonData.transactionId).to.include('cs_'); // Checkout Session ID",
+                  "    pm.expect(jsonData.amount).to.eql(125); // Strategy-calculated amount",
+                  "    ",
+                  "    // Verify checkout URL is provided",
+                  "    pm.expect(jsonData.additionalData).to.have.property('checkout_url');",
+                  "    pm.expect(jsonData.additionalData.checkout_url).to.include('checkout.stripe.com');",
+                  "    ",
+                  "    console.log('\\n=== STRIPE CHECKOUT SESSION CREATED ===');",
+                  "    console.log('Session ID:', jsonData.transactionId);",
+                  "    console.log('Amount:', '$' + jsonData.amount + ' (after 80% insurance coverage + $25 fee)');",
+                  "    console.log('Checkout URL:', jsonData.additionalData.checkout_url);",
+                  "    console.log('\\n CLICK THE URL ABOVE TO COMPLETE PAYMENT IN STRIPE');",
+                  "    console.log('===============================================\\n');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"currency\": \"USD\",\n    \"additionalData\": {\n        \"customer_email\": \"insurance.patient@example.com\",\n        \"metadata\": {\n            \"billing_type\": \"Insurance\",\n            \"insurance_number\": \"INS-12345-ABC\",\n            \"coverage_percentage\": \"80%\"\n        }\n    }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings/{{insurance_stripe_billing_id}}/process-payment",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "{{insurance_stripe_billing_id}}", "process-payment"]
+            }
+          }
+        },
+        {
+          "name": "3. Verify Insurance Billing Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Insurance Billing status updated to Completed', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('Completed');",
+                  "    pm.expect(jsonData.billingType).to.eql('Insurance');",
+                  "    pm.expect(jsonData.totalAmount).to.eql(125.00);",
+                  "    console.log('Insurance Billing Details:', JSON.stringify(jsonData, null, 2));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/billings/{{insurance_stripe_billing_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "{{insurance_stripe_billing_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SelfPay Billing Strategy - Cash Payment",
+      "item": [
+        {
+          "name": "1. Create SelfPay Billing with Cash",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('selfpay_cash_billing_id', jsonData.id);",
+                  "    console.log('SelfPay Billing created with ID:', jsonData.id);",
+                  "    ",
+                  "    pm.test('SelfPay Billing created successfully', function () {",
+                  "        pm.expect(jsonData.paymentMethod).to.eql('Cash');",
+                  "        pm.expect(jsonData.status).to.eql('Pending');",
+                  "        pm.expect(jsonData.amount).to.eql(200.00);",
+                  "        pm.expect(jsonData.billingType).to.eql('SelfPay');",
+                  "        pm.expect(jsonData.totalAmount).to.eql(190.00); // 5% discount for self-pay",
+                  "        pm.expect(jsonData.invoiceNumber).to.include('SP-');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"appointmentId\": 2,\n    \"patientId\": 1,\n    \"amount\": 200.00,\n    \"billingType\": \"SelfPay\",\n    \"paymentMethod\": \"Cash\",\n    \"description\": \"General Consultation - Self Pay Discount\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings",
+              "host": ["{{base_url}}"],
+              "path": ["billings"]
+            }
+          }
+        },
+        {
+          "name": "2. Process SelfPay Cash Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('SelfPay Cash Payment processed successfully', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.isSuccess).to.be.true;",
+                  "    pm.expect(jsonData.transactionId).to.include('CASH_');",
+                  "    pm.expect(jsonData.amount).to.eql(190); // Discounted amount",
+                  "    console.log('SelfPay Cash Transaction ID:', jsonData.transactionId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"currency\": \"USD\",\n    \"additionalData\": {\n        \"received_by\": \"Cashier Sarah Johnson\",\n        \"receipt_number\": \"RCP-SP-2024-001\",\n        \"cash_drawer\": \"Drawer #2\",\n        \"change_given\": 10,\n        \"discount_applied\": \"5% Self-Pay Discount\"\n    }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings/{{selfpay_cash_billing_id}}/process-payment",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "{{selfpay_cash_billing_id}}", "process-payment"]
+            }
+          }
+        },
+        {
+          "name": "3. Verify SelfPay Billing Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('SelfPay Billing status updated to Completed', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('Completed');",
+                  "    pm.expect(jsonData.billingType).to.eql('SelfPay');",
+                  "    pm.expect(jsonData.totalAmount).to.eql(190.00);",
+                  "    console.log('SelfPay Billing Details:', JSON.stringify(jsonData, null, 2));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/billings/{{selfpay_cash_billing_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "{{selfpay_cash_billing_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Corporate Billing Strategy - Stripe Payment",
+      "item": [
+        {
+          "name": "1. Create Corporate Billing with Stripe",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('corporate_stripe_billing_id', jsonData.id);",
+                  "    console.log('Corporate Billing created with ID:', jsonData.id);",
+                  "    ",
+                  "    pm.test('Corporate Billing created successfully', function () {",
+                  "        pm.expect(jsonData.paymentMethod).to.eql('Stripe');",
+                  "        pm.expect(jsonData.status).to.eql('Pending');",
+                  "        pm.expect(jsonData.amount).to.eql(300.00);",
+                  "        pm.expect(jsonData.billingType).to.eql('Corporate');",
+                  "        pm.expect(jsonData.totalAmount).to.eql(255.00); // 15% volume discount",
+                  "        pm.expect(jsonData.invoiceNumber).to.include('CORP-');",
+                  "        pm.expect(jsonData.companyId).to.eql('CORP-TECH-001');",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"appointmentId\": 3,\n    \"patientId\": 1,\n    \"amount\": 300.00,\n    \"billingType\": \"Corporate\",\n    \"companyId\": \"CORP-TECH-001\",\n    \"paymentMethod\": \"Stripe\",\n    \"description\": \"Executive Health Checkup - Corporate Agreement\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings",
+              "host": ["{{base_url}}"],
+              "path": ["billings"]
+            }
+          }
+        },
+        {
+          "name": "2. Process Corporate Stripe Payment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Corporate Stripe Payment processed successfully', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.isSuccess).to.be.true;",
+                  "    pm.expect(jsonData.transactionId).to.include('pi_');",
+                  "    pm.expect(jsonData.amount).to.eql(255); // Discounted amount",
+                  "    console.log('Corporate Stripe Transaction ID:', jsonData.transactionId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"currency\": \"USD\",\n    \"additionalData\": {\n        \"customer_email\": \"hr@techcorp.com\",\n        \"payment_method_id\": \"pm_card_amex\",\n        \"metadata\": {\n            \"billing_type\": \"Corporate\",\n            \"company_id\": \"CORP-TECH-001\",\n            \"volume_discount\": \"15%\",\n            \"employee_count\": \"500+\"\n        }\n    }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings/{{corporate_stripe_billing_id}}/process-payment",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "{{corporate_stripe_billing_id}}", "process-payment"]
+            }
+          }
+        },
+        {
+          "name": "3. Verify Corporate Billing Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Corporate Billing status updated to Completed', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('Completed');",
+                  "    pm.expect(jsonData.billingType).to.eql('Corporate');",
+                  "    pm.expect(jsonData.totalAmount).to.eql(255.00);",
+                  "    console.log('Corporate Billing Details:', JSON.stringify(jsonData, null, 2));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/billings/{{corporate_stripe_billing_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "{{corporate_stripe_billing_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Billing Management and Reports",
+      "item": [
+        {
+          "name": "Get All Billings (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return list of billings with strategy info', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(Array.isArray(jsonData)).to.be.true;",
+                  "    ",
+                  "    // Check for different billing types",
+                  "    const billingTypes = jsonData.map(b => b.billingType);",
+                  "    console.log('Billing types found:', [...new Set(billingTypes)]);",
+                  "    console.log('Total billings:', jsonData.length);",
+                  "    ",
+                  "    // Calculate totals by billing type",
+                  "    const totals = jsonData.reduce((acc, billing) => {",
+                  "        if (!acc[billing.billingType]) acc[billing.billingType] = 0;",
+                  "        acc[billing.billingType] += billing.totalAmount;",
+                  "        return acc;",
+                  "    }, {});",
+                  "    console.log('Total amounts by billing type:', totals);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/billings",
+              "host": ["{{base_url}}"],
+              "path": ["billings"]
+            }
+          }
+        },
+        {
+          "name": "Get Billings by Patient",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Patient billings should show strategy calculations', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(Array.isArray(jsonData)).to.be.true;",
+                  "    ",
+                  "    jsonData.forEach(billing => {",
+                  "        console.log(`${billing.billingType}: $${billing.amount} -> $${billing.totalAmount} (${billing.invoiceNumber})`);",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/billings/patient/1",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "patient", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Refund Testing",
+      "item": [
+        {
+          "name": "Test Insurance Billing Partial Refund",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Insurance partial refund processed successfully', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.isSuccess).to.be.true;",
+                  "    pm.expect(jsonData.amount).to.eql(50);",
+                  "    console.log('Insurance Refund Transaction ID:', jsonData.transactionId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"amount\": 50.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings/{{insurance_stripe_billing_id}}/refund",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "{{insurance_stripe_billing_id}}", "refund"]
+            }
+          }
+        },
+        {
+          "name": "Test SelfPay Cash Full Refund",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('SelfPay cash full refund processed successfully', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.isSuccess).to.be.true;",
+                  "    pm.expect(jsonData.amount).to.eql(190);",
+                  "    pm.expect(jsonData.transactionId).to.include('CASH_REFUND_');",
+                  "    console.log('SelfPay Cash Refund Transaction ID:', jsonData.transactionId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings/{{selfpay_cash_billing_id}}/refund",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "{{selfpay_cash_billing_id}}", "refund"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error Testing - Strategy Validation",
+      "item": [
+        {
+          "name": "Test Insurance Billing without Insurance Number",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should reject insurance billing without insurance number', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 500]);",
+                  "    var responseText = pm.response.text();",
+                  "    pm.expect(responseText).to.include('Insurance number');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"appointmentId\": 99,\n    \"patientId\": 1,\n    \"amount\": 100.00,\n    \"billingType\": \"Insurance\",\n    \"paymentMethod\": \"Stripe\",\n    \"description\": \"Testing insurance validation\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings",
+              "host": ["{{base_url}}"],
+              "path": ["billings"]
+            }
+          }
+        },
+        {
+          "name": "Test Corporate Billing without Company ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should reject corporate billing without company ID', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 500]);",
+                  "    var responseText = pm.response.text();",
+                  "    pm.expect(responseText).to.include('Company ID');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"appointmentId\": 98,\n    \"patientId\": 1,\n    \"amount\": 200.00,\n    \"billingType\": \"Corporate\",\n    \"paymentMethod\": \"Cash\",\n    \"description\": \"Testing corporate validation\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings",
+              "host": ["{{base_url}}"],
+              "path": ["billings"]
+            }
+          }
+        },
+        {
+          "name": "Test Unsupported Billing Type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should reject unsupported billing type', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 500]);",
+                  "    var responseText = pm.response.text();",
+                  "    pm.expect(responseText).to.include('not supported');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"appointmentId\": 97,\n    \"patientId\": 1,\n    \"amount\": 150.00,\n    \"billingType\": \"Government\",\n    \"paymentMethod\": \"Cash\",\n    \"description\": \"Testing unsupported billing type\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/billings",
+              "host": ["{{base_url}}"],
+              "path": ["billings"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authorization Testing",
+      "item": [
+        {
+          "name": "Patient Access - Own Billing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/billings/patient/1",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "patient", "1"]
+            }
+          }
+        },
+        {
+          "name": "Patient Access - Other's Billing (Should Fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Patient should not access other patient billings', function () {",
+                  "    pm.expect(pm.response.code).to.eql(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{patient_jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/billings/patient/999",
+              "host": ["{{base_url}}"],
+              "path": ["billings", "patient", "999"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Strategy Calculation Verification",
+      "item": [
+        {
+          "name": "Compare Strategy Calculations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Verify all billing strategies calculated correctly', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    ",
+                  "    // Find billings by type and verify calculations",
+                  "    const insuranceBilling = jsonData.find(b => b.billingType === 'Insurance');",
+                  "    const selfPayBilling = jsonData.find(b => b.billingType === 'SelfPay');",
+                  "    const corporateBilling = jsonData.find(b => b.billingType === 'Corporate');",
+                  "    ",
+                  "    if (insuranceBilling) {",
+                  "        // Insurance: 500 * 0.2 + 25 = 125",
+                  "        pm.expect(insuranceBilling.totalAmount).to.eql(125.00);",
+                  "        console.log('Insurance calculation verified: $500 -> $125 (80% coverage + $25 fee)');",
+                  "    }",
+                  "    ",
+                  "    if (selfPayBilling) {",
+                  "        // SelfPay: 200 * 0.95 = 190",
+                  "        pm.expect(selfPayBilling.totalAmount).to.eql(190.00);",
+                  "        console.log('SelfPay calculation verified: $200 -> $190 (5% discount)');",
+                  "    }",
+                  "    ",
+                  "    if (corporateBilling) {",
+                  "        // Corporate: 300 * 0.85 = 255",
+                  "        pm.expect(corporateBilling.totalAmount).to.eql(255.00);",
+                  "        console.log('Corporate calculation verified: $300 -> $255 (15% volume discount)');",
+                  "    }",
+                  "    ",
+                  "    console.log('\\nStrategy Pattern Implementation Working Correctly!');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/billings",
+              "host": ["{{base_url}}"],
+              "path": ["billings"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

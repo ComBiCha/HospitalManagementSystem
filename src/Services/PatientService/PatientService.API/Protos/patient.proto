@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+option csharp_namespace = "PatientService.API.Grpc";
+
+package patient;
+
+import "google/protobuf/empty.proto";
+
+service PatientGrpcService {
+  rpc CreatePatient (PatientRequest) returns (PatientResponse);
+  rpc GetPatient (GetPatientRequest) returns (PatientResponse);
+  rpc UpdatePatient (UpdatePatientRequest) returns (PatientResponse);
+  rpc DeletePatient (GetPatientRequest) returns (google.protobuf.Empty);
+  rpc ListPatients (google.protobuf.Empty) returns (PatientList);
+}
+
+message PatientRequest {
+  string name = 1;
+  int32 age = 2;
+  string email = 3;
+}
+
+message UpdatePatientRequest {
+  int32 id = 1;
+  string name = 2;
+  int32 age = 3;
+  string email = 4;
+}
+
+message GetPatientRequest {
+  int32 id = 1;
+}
+
+message PatientResponse {
+  int32 id = 1;
+  string name = 2;
+  int32 age = 3;
+  string email = 4;
+}
+
+message PatientList {
+  repeated PatientResponse patients = 1;
+}

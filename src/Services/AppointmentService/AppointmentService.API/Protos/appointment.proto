@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+option csharp_namespace = "AppointmentService.API.Grpc";
+
+package appointment;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service AppointmentGrpcService {
+  rpc CreateAppointment (AppointmentRequest) returns (AppointmentResponse);
+  rpc GetAppointment (GetAppointmentRequest) returns (AppointmentResponse);
+  rpc UpdateAppointment (UpdateAppointmentRequest) returns (AppointmentResponse);
+  rpc DeleteAppointment (GetAppointmentRequest) returns (google.protobuf.Empty);
+  rpc ListAppointments (google.protobuf.Empty) returns (AppointmentList);
+  rpc GetAppointmentsByPatient (GetAppointmentsByPatientRequest) returns (AppointmentList);
+  rpc GetAppointmentsByDoctor (GetAppointmentsByDoctorRequest) returns (AppointmentList);
+}
+
+message AppointmentRequest {
+  int32 patient_id = 1;
+  int32 doctor_id = 2;
+  google.protobuf.Timestamp date = 3;
+  string status = 4;
+}
+
+message UpdateAppointmentRequest {
+  int32 id = 1;
+  int32 patient_id = 2;
+  int32 doctor_id = 3;
+  google.protobuf.Timestamp date = 4;
+  string status = 5;
+}
+
+message GetAppointmentRequest {
+  int32 id = 1;
+}
+
+message GetAppointmentsByPatientRequest {
+  int32 patient_id = 1;
+}
+
+message GetAppointmentsByDoctorRequest {
+  int32 doctor_id = 1;
+}
+
+message AppointmentResponse {
+  int32 id = 1;
+  int32 patient_id = 2;
+  int32 doctor_id = 3;
+  google.protobuf.Timestamp date = 4;
+  string status = 5;
+  string patient_name = 6;
+  string doctor_name = 7;
+  string doctor_specialty = 8;
+}
+
+message AppointmentList {
+  repeated AppointmentResponse appointments = 1;
+}

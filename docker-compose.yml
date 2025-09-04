@@ -1,0 +1,274 @@
+services:
+  # PostgreSQL for Patient Service
+  patient-postgres:
+    image: postgres:15
+    container_name: hms-patient-postgres
+    environment:
+      POSTGRES_DB: HMS_PatientDB
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5432:5432"
+    volumes:
+      - patient_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hms-network
+
+  # PostgreSQL for Doctor Service  
+  doctor-postgres:
+    image: postgres:15
+    container_name: hms-doctor-postgres
+    environment:
+      POSTGRES_DB: HMS_DoctorDB
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5433:5432"
+    volumes:
+      - doctor_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hms-network
+
+  # PostgreSQL for Appointment Service
+  appointment-postgres:
+    image: postgres:15
+    container_name: hms-appointment-postgres
+    environment:
+      POSTGRES_DB: HMS_AppointmentDB
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5434:5432"
+    volumes:
+      - appointment_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hms-network
+
+  # PostgreSQL for Billing Service
+  billing-postgres:
+    image: postgres:15
+    container_name: hms-billing-postgres
+    environment:
+      POSTGRES_DB: HMS_BillingDB
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5437:5432"
+    volumes:
+      - billing_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hms-network
+
+  # RabbitMQ for messaging
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: hms-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"    # AMQP port
+      - "15672:15672"  # Management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - hms-network
+
+  # PostgreSQL for Notification Service
+  notification-postgres:
+    image: postgres:15
+    container_name: hms-notification-postgres
+    environment:
+      POSTGRES_DB: HMS_NotificationDB
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5435:5432"
+    volumes:
+      - notification_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hms-network
+
+  # PostgreSQL for Authentication Service  
+  auth-postgres:
+    image: postgres:15
+    container_name: hms-auth-postgres
+    environment:
+      POSTGRES_DB: HMS_AuthDB
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5436:5432"
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hms-network
+
+  # BillingService API
+  billing-service:
+    build:
+      context: .
+      dockerfile: src/Services/BillingService/BillingService.API/Dockerfile
+    container_name: hms-billing-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Host=billing-postgres;Port=5432;Database=HMS_BillingDB;Username=postgres;Password=postgres123
+      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+      - Jwt__Issuer=HMS.AuthService
+      - Jwt__Audience=HMS.Services
+      - Jwt__ExpiryMinutes=60
+      - RabbitMQ__HostName=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__UserName=guest
+      - RabbitMQ__Password=guest
+      - Stripe__PublishableKey=pk_test_51S3UfIFkuPFy3lADPYhc1vpWmvExBWlcmlsoommBJlR8041rkardUtKcXxqLcthA7lLiBGEfAYNUegDVsjrSTbLJ00QGFjJ1Rd
+      - Stripe__SecretKey=sk_test_51S3UfIFkuPFy3lADlMZ0av334rGaElnrKh6PkDdylwPt7mhIy0vhmmL57UeWost5JGO5henRFdP60RnXZ8t7k7dn00qgeu5lPx
+    ports:
+      - "7001:80"
+    depends_on:
+      billing-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hms-network
+
+  # PostgreSQL for Image Service
+  image-postgres:
+    image: postgres:15
+    container_name: hms-image-postgres
+    environment:
+      POSTGRES_DB: HMS_ImageDB
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+    ports:
+      - "5438:5432"
+    volumes:
+      - image_postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - hms-network
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: hms-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - hms-network
+
+  # Image Service API
+  image-service:
+    build:
+      context: .
+      dockerfile: src/Services/ImageService/ImageService.API/Dockerfile
+    container_name: hms-image-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Host=image-postgres;Port=5432;Database=HMS_ImageDB;Username=postgres;Password=postgres123
+      - MinIO__Endpoint=minio:9000
+      - MinIO__AccessKey=minioadmin
+      - MinIO__SecretKey=minioadmin
+      - MinIO__BucketName=medical-images
+      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+      - Jwt__Issuer=HMS.AuthService
+      - Jwt__Audience=HMS.Services
+    ports:
+      - "7005:80"
+    depends_on:
+      image-postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hms-network
+
+# Docker volumes - data được lưu persistent ngay cả khi container bị xóa
+volumes:
+  patient_postgres_data:
+    driver: local
+  doctor_postgres_data:
+    driver: local  
+  appointment_postgres_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  notification_postgres_data:
+    driver: local
+  auth_postgres_data:
+    driver: local
+  billing_postgres_data:
+    driver: local
+  image_postgres_data:
+    driver: local
+  minio_data:
+    driver: local
+
+networks:
+  hms-network:
+    driver: bridge

@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+option csharp_namespace = "BillingService.API.Protos";
+
+package billing;
+
+// Billing gRPC Service
+service BillingGrpcService {
+    rpc GetBilling (GetBillingRequest) returns (BillingResponse);
+    rpc GetBillingByAppointment (GetBillingByAppointmentRequest) returns (BillingResponse);
+    rpc GetBillingsByPatient (GetBillingsByPatientRequest) returns (BillingsResponse);
+    rpc CreateBilling (CreateBillingRequest) returns (BillingResponse);
+    rpc ProcessPayment (ProcessPaymentRequest) returns (PaymentResultResponse);
+    rpc RefundPayment (RefundPaymentRequest) returns (PaymentResultResponse);
+    rpc GetAvailablePaymentMethods (GetPaymentMethodsRequest) returns (PaymentMethodsResponse);
+}
+
+// Request Messages
+message GetBillingRequest {
+    int32 billing_id = 1;
+}
+
+message GetBillingByAppointmentRequest {
+    int32 appointment_id = 1;
+}
+
+message GetBillingsByPatientRequest {
+    int32 patient_id = 1;
+}
+
+message CreateBillingRequest {
+    int32 appointment_id = 1;
+    int32 patient_id = 2;
+    double amount = 3;
+    string payment_method = 4;
+    string description = 5;
+}
+
+message ProcessPaymentRequest {
+    int32 billing_id = 1;
+    string currency = 2;
+    map<string, string> additional_data = 3;
+}
+
+message RefundPaymentRequest {
+    int32 billing_id = 1;
+    optional double amount = 2;
+}
+
+message GetPaymentMethodsRequest {
+    // Empty request
+}
+
+// Response Messages
+message BillingResponse {
+    bool success = 1;
+    string message = 2;
+    optional BillingDto billing = 3;
+}
+
+message BillingsResponse {
+    bool success = 1;
+    string message = 2;
+    repeated BillingDto billings = 3;
+}
+
+message PaymentResultResponse {
+    bool success = 1;
+    string message = 2;
+    optional PaymentResultDto payment_result = 3;
+}
+
+message PaymentMethodsResponse {
+    bool success = 1;
+    string message = 2;
+    repeated string payment_methods = 3;
+}
+
+// Data Transfer Objects
+message BillingDto {
+    int32 id = 1;
+    int32 appointment_id = 2;
+    int32 patient_id = 3;
+    double amount = 4;
+    string payment_method = 5;
+    string status = 6;
+    string description = 7;
+    string transaction_id = 8;
+    string created_at = 9;
+    string updated_at = 10;
+}
+
+message PaymentResultDto {
+    bool is_success = 1;
+    string transaction_id = 2;
+    string failure_reason = 3;
+    double amount = 4;
+    string processed_at = 5;
+    map<string, string> additional_data = 6;
+}

@@ -1,0 +1,37 @@
+### Patient Service API Testing
+
+@baseUrl = http://localhost:5001/api
+
+### 1. Get all patients
+GET {{baseUrl}}/patients
+
+### 2. Create a new patient
+POST {{baseUrl}}/patients
+Content-Type: application/json
+
+{
+    "name": "Nguyễn Văn A",
+    "age": 30,
+    "email": "nguyenvana@email.com"
+}
+
+### 3. Get patient by ID
+GET {{baseUrl}}/patients/1
+
+### 4. Update patient
+PUT {{baseUrl}}/patients/1
+Content-Type: application/json
+
+{
+    "name": "Nguyễn Văn B",
+    "age": 31,
+    "email": "nguyenvanb@email.com"
+}
+
+### 5. Delete patient
+DELETE {{baseUrl}}/patients/1ntService.API_HostAddress = http://localhost:5110
+
+GET {{PatientService.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
