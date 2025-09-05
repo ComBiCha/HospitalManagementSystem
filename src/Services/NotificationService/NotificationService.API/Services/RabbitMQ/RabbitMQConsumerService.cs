@@ -142,8 +142,8 @@ namespace NotificationService.API.Services.RabbitMQ
                     context.Notifications.Add(notification);
                     await context.SaveChangesAsync();
 
-                    _logger.LogInformation("📧 Email to Patient {PatientName}: {Message}", 
-                        notification.PatientName, notification.Message);
+                    _logger.LogInformation("📧 Email to Patient {PatientName}: {Content}", 
+                        notification.PatientName, notification.Content);
                 }
             }
             catch (Exception ex)
@@ -156,56 +156,109 @@ namespace NotificationService.API.Services.RabbitMQ
         private Notification CreateAppointmentCreatedNotification(AppointmentEventData data)
         {
             var appointmentDate = data.Date.ToString("yyyy-MM-dd HH:mm");
-            var message = $"📧 Email to Patient {data.PatientName}: Your appointment with Dr. {data.DoctorName} is scheduled for {appointmentDate}.";
+            var subject = "Appointment Confirmation";
+            var content = $"Your appointment with Dr. {data.DoctorName} is scheduled for {appointmentDate}.";
 
             return new Notification
             {
+                // New required properties
+                UserId = data.PatientId.ToString(),
+                Recipient = "patient@email.com", // In real app, get from patient data
+                Subject = subject,
+                Content = content,
+                ChannelType = NotificationChannels.Email,
+                Status = NotificationStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+                
+                // Legacy properties for backward compatibility
                 AppointmentId = data.AppointmentId,
-                Message = message,
+                Message = content,
                 Type = "Email",
-                RecipientEmail = "patient@email.com", // In real app, get from patient data
+                RecipientEmail = "patient@email.com",
                 PatientName = data.PatientName,
                 DoctorName = data.DoctorName,
-                AppointmentDate = data.Date,
-                CreatedAt = DateTime.UtcNow,
-                IsRead = false
+                IsRead = false,
+                
+                // Metadata as JSON
+                Metadata = JsonConvert.SerializeObject(new
+                {
+                    AppointmentDate = data.Date,
+                    DoctorSpecialty = data.DoctorSpecialty,
+                    EventType = "appointment.created"
+                })
             };
         }
 
         private Notification CreateAppointmentUpdatedNotification(AppointmentEventData data)
         {
             var appointmentDate = data.Date.ToString("yyyy-MM-dd HH:mm");
-            var message = $"📧 Email to Patient {data.PatientName}: Your appointment with Dr. {data.DoctorName} has been updated. New date: {appointmentDate}.";
+            var subject = "Appointment Updated";
+            var content = $"Your appointment with Dr. {data.DoctorName} has been updated. New date: {appointmentDate}.";
 
             return new Notification
             {
+                // New required properties
+                UserId = data.PatientId.ToString(),
+                Recipient = "patient@email.com",
+                Subject = subject,
+                Content = content,
+                ChannelType = NotificationChannels.Email,
+                Status = NotificationStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+                
+                // Legacy properties for backward compatibility
                 AppointmentId = data.AppointmentId,
-                Message = message,
+                Message = content,
                 Type = "Email",
                 RecipientEmail = "patient@email.com",
                 PatientName = data.PatientName,
                 DoctorName = data.DoctorName,
-                AppointmentDate = data.Date,
-                CreatedAt = DateTime.UtcNow,
-                IsRead = false
+                IsRead = false,
+                
+                // Metadata as JSON
+                Metadata = JsonConvert.SerializeObject(new
+                {
+                    AppointmentDate = data.Date,
+                    DoctorSpecialty = data.DoctorSpecialty,
+                    EventType = "appointment.updated",
+                    UpdatedAt = data.UpdatedAt
+                })
             };
         }
 
         private Notification CreateAppointmentCancelledNotification(AppointmentEventData data)
         {
-            var message = $"📧 Email to Patient {data.PatientName}: Your appointment with Dr. {data.DoctorName} has been cancelled.";
+            var subject = "Appointment Cancelled";
+            var content = $"Your appointment with Dr. {data.DoctorName} has been cancelled.";
 
             return new Notification
             {
+                // New required properties
+                UserId = data.PatientId.ToString(),
+                Recipient = "patient@email.com",
+                Subject = subject,
+                Content = content,
+                ChannelType = NotificationChannels.Email,
+                Status = NotificationStatus.Pending,
+                CreatedAt = DateTime.UtcNow,
+                
+                // Legacy properties for backward compatibility
                 AppointmentId = data.AppointmentId,
-                Message = message,
+                Message = content,
                 Type = "Email",
                 RecipientEmail = "patient@email.com",
                 PatientName = data.PatientName,
                 DoctorName = data.DoctorName,
-                AppointmentDate = data.Date,
-                CreatedAt = DateTime.UtcNow,
-                IsRead = false
+                IsRead = false,
+                
+                // Metadata as JSON
+                Metadata = JsonConvert.SerializeObject(new
+                {
+                    AppointmentDate = data.Date,
+                    DoctorSpecialty = data.DoctorSpecialty,
+                    EventType = "appointment.cancelled",
+                    CancelledAt = data.CancelledAt
+                })
             };
         }
 

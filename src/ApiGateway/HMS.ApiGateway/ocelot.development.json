@@ -1,0 +1,43 @@
+{
+  "Routes": [
+    {
+      "DownstreamPathTemplate": "/api/patients/{catchAll}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5100
+        }
+      ],
+      "UpstreamPathTemplate": "/api/patients/{catchAll}",
+      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "Key": "patients-catchall",
+      "RequestIdKey": "X-Request-ID",
+      "AddHeadersToRequest": {
+        "X-Forwarded-For": "{RemoteIpAddress}",
+        "X-Gateway": "HMS-Development"
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/doctors/{catchAll}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5200
+        }
+      ],
+      "UpstreamPathTemplate": "/api/doctors/{catchAll}",
+      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "Key": "doctors-catchall",
+      "RequestIdKey": "X-Request-ID",
+      "AddHeadersToRequest": {
+        "X-Forwarded-For": "{RemoteIpAddress}",
+        "X-Gateway": "HMS-Development"
+      }
+    }
+  ],
+  "GlobalConfiguration": {
+    "BaseUrl": "http://localhost:5000"
+  }
+}

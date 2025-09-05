@@ -1,0 +1,75 @@
+{
+  "Routes": [
+    {
+      "DownstreamPathTemplate": "/api/patients/{catchAll}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "patient-service",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/api/patients/{catchAll}",
+      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "Key": "patients"
+    },
+    
+    {
+      "DownstreamPathTemplate": "/api/doctors/{catchAll}",
+      "DownstreamScheme": "http", 
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "doctor-service",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/api/doctors/{catchAll}",
+      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "Key": "doctors"
+    },
+
+    {
+      "DownstreamPathTemplate": "/api/billing/{catchAll}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "billing-service",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/api/billing/{catchAll}",
+      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "Key": "billing"
+    },
+
+    {
+      "DownstreamPathTemplate": "/health",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "patient-service",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/health/patients",
+      "UpstreamHttpMethod": [ "GET" ]
+    },
+    {
+      "DownstreamPathTemplate": "/health",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "doctor-service",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/health/doctors",
+      "UpstreamHttpMethod": [ "GET" ]
+    }
+  ],
+
+  "GlobalConfiguration": {
+    "BaseUrl": "http://localhost:5000",
+    "RequestIdKey": "X-Request-ID"
+  }
+}

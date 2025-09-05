@@ -1,22 +1,32 @@
-# Use the official .NET 8 runtime as a parent image
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+# Use the official .NET 9 runtime as a parent image
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
 WORKDIR /app
-EXPOSE 8080
-EXPOSE 8081
+EXPOSE 80
 
-# Use the SDK image to build the application
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
+
+# Copy csproj and restore dependencies
 COPY ["src/Services/PatientService/PatientService.API/PatientService.API.csproj", "src/Services/PatientService/PatientService.API/"]
 RUN dotnet restore "src/Services/PatientService/PatientService.API/PatientService.API.csproj"
+
+# Copy everything else and build
 COPY . .
 WORKDIR "/src/src/Services/PatientService/PatientService.API"
 RUN dotnet build "PatientService.API.csproj" -c Release -o /app/build
 
+# Publish stage
 FROM build AS publish
-RUN dotnet publish "PatientService.API.csproj" -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "PatientService.API.csproj" -c Release -o /app/publish
 
+# Runtime stage
 FROM base AS final
 WORKDIR /app
+
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 COPY --from=publish /app/publish .
+
 ENTRYPOINT ["dotnet", "PatientService.API.dll"]

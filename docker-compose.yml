@@ -83,6 +83,24 @@ services:
     networks:
       - hms-network
 
+  # Redis for caching (NEW)
+  redis:
+    image: redis:7-alpine
+    container_name: hms-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - hms-network
+    command: redis-server --appendonly yes --requirepass redis123
+
   # RabbitMQ for messaging
   rabbitmq:
     image: rabbitmq:3-management
@@ -122,6 +140,80 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - hms-network
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: src/ApiGateway/HMS.ApiGateway/Dockerfile
+    container_name: hms-api-gateway
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      # Service endpoints for routing
+      - Services__PatientService__BaseUrl=http://patient-service:80
+      - Services__DoctorService__BaseUrl=http://doctor-service:80
+      - Services__BillingService__BaseUrl=http://billing-service:80
+      - Services__NotificationService__BaseUrl=http://notification-service:80
+      - Services__ImageService__BaseUrl=http://image-service:80
+    ports:
+      - "5000:80"   # Main entry point
+    depends_on:
+      patient-service:
+        condition: service_healthy
+      doctor-service:
+        condition: service_healthy
+      billing-service:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hms-network
+
+  # Notification Service API (Đã được di chuyển ra ngoài)
+  notification-service:
+    build:
+      context: .
+      dockerfile: src/Services/NotificationService/NotificationService.API/Dockerfile
+    container_name: hms-notification-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Host=notification-postgres;Port=5432;Database=HMS_NotificationDB;Username=postgres;Password=postgres123
+      - RabbitMQ__HostName=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__UserName=guest
+      - RabbitMQ__Password=guest
+      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+      - Jwt__Issuer=HMS.AuthService
+      - Jwt__Audience=HMS.Services
+      # Email settings
+      - Email__SmtpServer=smtp.gmail.com
+      - Email__SmtpPort=587
+      - Email__Username=sangrk2004@gmail.com
+      - Email__Password=elhl wqmk qnva rwbj
+      - Email__FromEmail=sangrk2004@gmail.com
+      - Email__FromName=Hospital Management System
+      - Email__EnableSsl=true
+      - Email__UseDefaultCredentials=false
+      # SMS settings (Twilio example)
+      - SMS__AccountSid=your-twilio-sid
+      - SMS__AuthToken=your-twilio-token
+      - SMS__FromNumber=+1234567890
+      # Push notification settings (Firebase)
+      - Push__ServerKey=your-firebase-server-key
+      - Push__SenderId=your-firebase-sender-id
+      # Notification settings
+      - Notification__RetryAttempts=3
+      - Notification__RetryDelayMinutes=5
+    ports:
+      - "7003:80"
+    depends_on:
+      notification-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
     networks:
       - hms-network
 
@@ -174,6 +266,12 @@ services:
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
     networks:
       - hms-network
 
@@ -248,6 +346,77 @@ services:
     networks:
       - hms-network
 
+  # ==================== ADD MISSING APPLICATION SERVICES ====================
+  
+  # Patient Service API
+  patient-service:
+    build:
+      context: .
+      dockerfile: src/Services/PatientService/PatientService.API/Dockerfile
+    container_name: hms-patient-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production  # Change from Docker to Production
+      - ASPNETCORE_URLS=http://+:80        # Force HTTP only
+      - ASPNETCORE_HTTPS_PORT=             # Explicitly disable HTTPS port
+      - DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2UNENCRYPTEDSUPPORT=true
+      - ConnectionStrings__DefaultConnection=Host=patient-postgres;Port=5432;Database=HMS_PatientDB;Username=postgres;Password=postgres123
+      - ConnectionStrings__Redis=redis:6379,password=redis123
+      - Redis__Password=redis123
+    ports:
+      - "7100:80"
+    depends_on:
+      patient-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+    networks:
+      - hms-network
+
+
+
+  # Doctor Service API  
+  doctor-service:
+    build:
+      context: .
+      dockerfile: src/Services/DoctorService/DoctorService.API/Dockerfile
+    container_name: hms-doctor-service
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80                     # Force HTTP only
+      - ASPNETCORE_HTTPS_PORT=                          # Disable HTTPS port                                  # Empty HTTPS port
+      - DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2UNENCRYPTEDSUPPORT=true
+      # Database
+      - ConnectionStrings__DefaultConnection=Host=doctor-postgres;Port=5432;Database=HMS_DoctorDB;Username=postgres;Password=postgres123
+      # JWT settings
+      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+      - Jwt__Issuer=HMS.AuthService
+      - Jwt__Audience=HMS.Services
+      # gRPC settings for calling Patient Service
+      - PatientService__GrpcEndpoint=http://patient-service:80
+    ports:
+      - "7200:80"
+    depends_on:
+      doctor-postgres:
+        condition: service_healthy
+      patient-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+    networks:
+      - hms-network
+
 # Docker volumes - data được lưu persistent ngay cả khi container bị xóa
 volumes:
   patient_postgres_data:
@@ -267,6 +436,8 @@ volumes:
   image_postgres_data:
     driver: local
   minio_data:
+    driver: local
+  redis_data:  # NEW
     driver: local
 
 networks:

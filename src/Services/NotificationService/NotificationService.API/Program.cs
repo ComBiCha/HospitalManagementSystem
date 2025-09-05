@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using NotificationService.API.Data;
 using NotificationService.API.Services.RabbitMQ;
+using NotificationService.API.Services.Interfaces;
+using NotificationService.API.Services.Channels;
+using NotificationService.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,6 +21,12 @@ builder.Services.AddSwaggerGen();
 
 // Add RabbitMQ Consumer as Hosted Service
 builder.Services.AddHostedService<RabbitMQConsumerService>();
+
+builder.Services.AddScoped<INotificationChannel, EmailNotificationChannel>();
+builder.Services.AddScoped<INotificationChannel, SmsNotificationChannel>();
+builder.Services.AddScoped<INotificationChannel, PushNotificationChannel>();
+
+builder.Services.AddScoped<NotificationServiceManager>();
 
 // Add CORS
 builder.Services.AddCors(options =>

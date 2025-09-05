@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using PatientService.API.Models;
 using PatientService.API.Repositories;
+using PatientService.API.Services.Caching;
 
 namespace PatientService.API.Controllers
 {
@@ -9,197 +10,245 @@ namespace PatientService.API.Controllers
     public class PatientsController : ControllerBase
     {
         private readonly IPatientRepository _patientRepository;
+        private readonly ICacheService _cacheService;
         private readonly ILogger<PatientsController> _logger;
 
-        public PatientsController(IPatientRepository patientRepository, ILogger<PatientsController> logger)
+        public PatientsController(
+            IPatientRepository patientRepository,
+            ICacheService cacheService,
+            ILogger<PatientsController> logger)
         {
             _patientRepository = patientRepository;
+            _cacheService = cacheService;
             _logger = logger;
         }
 
-        /// <summary>
-        /// Get all patients
-        /// </summary>
-        /// <returns>List of patients</returns>
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Patient>>> GetPatients()
+        public async Task<IActionResult> GetAllPatients()
         {
             try
             {
-                _logger.LogInformation("Getting all patients via REST API");
-                var patients = await _patientRepository.GetAllAsync();
+                var patients = await _patientRepository.GetAllPatientsAsync();
                 return Ok(patients);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting all patients");
-                return StatusCode(500, "Internal server error");
+                return StatusCode(500, new { message = "Error retrieving patients" });
             }
         }
 
-        /// <summary>
-        /// Get patient by ID
-        /// </summary>
-        /// <param name="id">Patient ID</param>
-        /// <returns>Patient details</returns>
         [HttpGet("{id}")]
-        public async Task<ActionResult<Patient>> GetPatient(int id)
+        public async Task<IActionResult> GetPatient(int id)
         {
             try
             {
-                _logger.LogInformation("Getting patient with ID: {PatientId} via REST API", id);
-                
-                var patient = await _patientRepository.GetByIdAsync(id);
+                var patient = await _patientRepository.GetPatientByIdAsync(id);
                 if (patient == null)
                 {
-                    return NotFound($"Patient with ID {id} not found");
+                    return NotFound();
                 }
-
                 return Ok(patient);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting patient with ID: {PatientId}", id);
-                return StatusCode(500, "Internal server error");
+                _logger.LogError(ex, "Error getting patient: {PatientId}", id);
+                return StatusCode(500, new { message = "Error retrieving patient" });
             }
         }
 
-        /// <summary>
-        /// Create a new patient
-        /// </summary>
-        /// <param name="patient">Patient data</param>
-        /// <returns>Created patient</returns>
-        [HttpPost]
-        public async Task<ActionResult<Patient>> CreatePatient([FromBody] CreatePatientRequest request)
+        [HttpGet("email/{email}")]
+        public async Task<IActionResult> GetPatientByEmail(string email)
         {
             try
             {
-                _logger.LogInformation("Creating patient via REST API: Name={Name}, Age={Age}, Email={Email}", 
-                    request.Name, request.Age, request.Email);
-
-                if (!ModelState.IsValid)
+                var patient = await _patientRepository.GetPatientByEmailAsync(email);
+                if (patient == null)
                 {
-                    return BadRequest(ModelState);
+                    return NotFound();
                 }
+                return Ok(patient);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting patient by email: {Email}", email);
+                return StatusCode(500, new { message = "Error retrieving patient" });
+            }
+        }
 
-                var patient = new Patient
-                {
-                    Name = request.Name,
-                    Age = request.Age,
-                    Email = request.Email
-                };
+        [HttpGet("search/name/{name}")]
+        public async Task<IActionResult> GetPatientsByName(string name)
+        {
+            try
+            {
+                var patients = await _patientRepository.GetPatientsByNameAsync(name);
+                return Ok(patients);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching patients by name: {Name}", name);
+                return StatusCode(500, new { message = "Error searching patients" });
+            }
+        }
 
-                var createdPatient = await _patientRepository.CreateAsync(patient);
+        [HttpGet("recent")]
+        public async Task<IActionResult> GetRecentPatients([FromQuery] int count = 50)
+        {
+            try
+            {
+                var patients = await _patientRepository.GetRecentPatientsAsync(count);
+                return Ok(patients);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting recent patients");
+                return StatusCode(500, new { message = "Error retrieving recent patients" });
+            }
+        }
+
+        [HttpGet("count")]
+        public async Task<IActionResult> GetPatientCount()
+        {
+            try
+            {
+                var count = await _patientRepository.GetPatientCountAsync();
+                return Ok(new { count });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting patient count");
+                return StatusCode(500, new { message = "Error retrieving patient count" });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> CreatePatient([FromBody] Patient patient)
+        {
+            try
+            {
+                var createdPatient = await _patientRepository.CreatePatientAsync(patient);
                 return CreatedAtAction(nameof(GetPatient), new { id = createdPatient.Id }, createdPatient);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating patient");
-                return StatusCode(500, "Internal server error");
+                return StatusCode(500, new { message = "Error creating patient" });
             }
         }
 
-        /// <summary>
-        /// Update an existing patient
-        /// </summary>
-        /// <param name="id">Patient ID</param>
-        /// <param name="request">Updated patient data</param>
-        /// <returns>Updated patient</returns>
         [HttpPut("{id}")]
-        public async Task<ActionResult<Patient>> UpdatePatient(int id, [FromBody] UpdatePatientRequest request)
+        public async Task<IActionResult> UpdatePatient(int id, [FromBody] Patient patient)
         {
             try
             {
-                _logger.LogInformation("Updating patient with ID: {PatientId} via REST API", id);
-
-                if (!ModelState.IsValid)
+                if (id != patient.Id)
                 {
-                    return BadRequest(ModelState);
+                    return BadRequest("ID mismatch");
                 }
 
-                var patient = new Patient
-                {
-                    Id = id,
-                    Name = request.Name,
-                    Age = request.Age,
-                    Email = request.Email
-                };
-
-                var updatedPatient = await _patientRepository.UpdateAsync(patient);
+                var updatedPatient = await _patientRepository.UpdatePatientAsync(patient);
                 if (updatedPatient == null)
                 {
-                    return NotFound($"Patient with ID {id} not found");
+                    return NotFound();
                 }
 
                 return Ok(updatedPatient);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating patient with ID: {PatientId}", id);
-                return StatusCode(500, "Internal server error");
+                _logger.LogError(ex, "Error updating patient: {PatientId}", id);
+                return StatusCode(500, new { message = "Error updating patient" });
             }
         }
 
-        /// <summary>
-        /// Delete a patient
-        /// </summary>
-        /// <param name="id">Patient ID</param>
-        /// <returns>No content if successful</returns>
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeletePatient(int id)
         {
             try
             {
-                _logger.LogInformation("Deleting patient with ID: {PatientId} via REST API", id);
-
-                var deleted = await _patientRepository.DeleteAsync(id);
-                if (!deleted)
+                var result = await _patientRepository.DeletePatientAsync(id);
+                if (!result)
                 {
-                    return NotFound($"Patient with ID {id} not found");
+                    return NotFound();
                 }
 
                 return NoContent();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting patient with ID: {PatientId}", id);
-                return StatusCode(500, "Internal server error");
+                _logger.LogError(ex, "Error deleting patient: {PatientId}", id);
+                return StatusCode(500, new { message = "Error deleting patient" });
             }
         }
 
-        /// <summary>
-        /// Check if patient exists
-        /// </summary>
-        /// <param name="id">Patient ID</param>
-        /// <returns>Boolean result</returns>
-        [HttpHead("{id}")]
-        public async Task<IActionResult> PatientExists(int id)
+        // Cache management endpoints
+        [HttpPost("cache/warmup")]
+        public async Task<IActionResult> WarmupCache()
         {
             try
             {
-                var exists = await _patientRepository.ExistsAsync(id);
-                return exists ? Ok() : NotFound();
+                if (_patientRepository is CachedPatientRepository cachedRepo)
+                {
+                    await cachedRepo.WarmupCacheAsync();
+                    return Ok(new { message = "Cache warmup completed successfully" });
+                }
+                
+                return BadRequest(new { message = "Caching is not enabled" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking if patient exists with ID: {PatientId}", id);
-                return StatusCode(500, "Internal server error");
+                _logger.LogError(ex, "Error during cache warmup");
+                return StatusCode(500, new { message = "Error during cache warmup" });
             }
         }
-    }
 
-    // DTOs for REST API
-    public class CreatePatientRequest
-    {
-        public string Name { get; set; } = string.Empty;
-        public int Age { get; set; }
-        public string Email { get; set; } = string.Empty;
-    }
+        [HttpPost("cache/clear")]
+        public async Task<IActionResult> ClearCache([FromQuery] string? pattern = null)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(pattern))
+                {
+                    if (_patientRepository is CachedPatientRepository cachedRepo)
+                    {
+                        await cachedRepo.ClearAllCacheAsync();
+                    }
+                }
+                else
+                {
+                    await _cacheService.RemovePatternAsync(pattern);
+                }
 
-    public class UpdatePatientRequest
-    {
-        public string Name { get; set; } = string.Empty;
-        public int Age { get; set; }
-        public string Email { get; set; } = string.Empty;
+                return Ok(new { message = "Cache cleared successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error clearing cache");
+                return StatusCode(500, new { message = "Error clearing cache" });
+            }
+        }
+
+        [HttpGet("cache/info/{id}")]
+        public async Task<IActionResult> GetCacheInfo(int id)
+        {
+            try
+            {
+                var cacheKey = CacheKeyGenerator.PatientById(id);
+                var exists = await _cacheService.ExistsAsync(cacheKey);
+                var ttl = await _cacheService.GetTtlAsync(cacheKey);
+
+                return Ok(new
+                {
+                    cacheKey,
+                    exists,
+                    ttl = ttl?.TotalMinutes
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting cache info");
+                return StatusCode(500, new { message = "Error getting cache info" });
+            }
+        }
     }
 }

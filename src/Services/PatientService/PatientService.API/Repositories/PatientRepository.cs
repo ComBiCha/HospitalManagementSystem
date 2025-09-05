@@ -15,17 +15,71 @@ namespace PatientService.API.Repositories
             _logger = logger;
         }
 
-        public async Task<Patient> CreateAsync(Patient patient)
+        public async Task<Patient?> GetPatientByIdAsync(int id)
         {
             try
             {
-                _logger.LogInformation("Creating patient: {Name}, Age: {Age}, Email: {Email}", 
-                    patient.Name, patient.Age, patient.Email);
+                return await _context.Patients.FindAsync(id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting patient by ID: {PatientId}", id);
+                throw;
+            }
+        }
 
+        public async Task<Patient?> GetPatientByEmailAsync(string email)
+        {
+            try
+            {
+                return await _context.Patients
+                    .FirstOrDefaultAsync(p => p.Email.ToLower() == email.ToLower());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting patient by email: {Email}", email);
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<Patient>> GetAllPatientsAsync()
+        {
+            try
+            {
+                return await _context.Patients
+                    .OrderBy(p => p.Name)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all patients");
+                throw;
+            }
+        }
+
+        public async Task<IEnumerable<Patient>> GetPatientsByNameAsync(string name)
+        {
+            try
+            {
+                return await _context.Patients
+                    .Where(p => p.Name.ToLower().Contains(name.ToLower()))
+                    .OrderBy(p => p.Name)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting patients by name: {Name}", name);
+                throw;
+            }
+        }
+
+        public async Task<Patient> CreatePatientAsync(Patient patient)
+        {
+            try
+            {
                 _context.Patients.Add(patient);
                 await _context.SaveChangesAsync();
-
-                _logger.LogInformation("Successfully created patient with ID: {PatientId}", patient.Id);
+                _logger.LogInformation("Patient created with ID: {PatientId}", patient.Id);
                 return patient;
             }
             catch (Exception ex)
@@ -35,114 +89,77 @@ namespace PatientService.API.Repositories
             }
         }
 
-        public async Task<Patient?> GetByIdAsync(int id)
+        public async Task<Patient?> UpdatePatientAsync(Patient patient)
         {
             try
             {
-                _logger.LogInformation("Getting patient with ID: {PatientId}", id);
-                
-                var patient = await _context.Patients.FindAsync(id);
-                
-                if (patient == null)
-                {
-                    _logger.LogWarning("Patient with ID {PatientId} not found", id);
-                }
-                else
-                {
-                    _logger.LogInformation("Found patient: {Name}", patient.Name);
-                }
-
-                return patient;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting patient with ID: {PatientId}", id);
-                throw;
-            }
-        }
-
-        public async Task<IEnumerable<Patient>> GetAllAsync()
-        {
-            try
-            {
-                _logger.LogInformation("Getting all patients");
-                
-                var patients = await _context.Patients.ToListAsync();
-                
-                _logger.LogInformation("Retrieved {Count} patients", patients.Count);
-                return patients;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting all patients");
-                throw;
-            }
-        }
-
-        public async Task<Patient?> UpdateAsync(Patient patient)
-        {
-            try
-            {
-                _logger.LogInformation("Updating patient with ID: {PatientId}", patient.Id);
-
                 var existingPatient = await _context.Patients.FindAsync(patient.Id);
                 if (existingPatient == null)
                 {
-                    _logger.LogWarning("Patient with ID {PatientId} not found for update", patient.Id);
                     return null;
                 }
 
-                existingPatient.Name = patient.Name;
-                existingPatient.Age = patient.Age;
-                existingPatient.Email = patient.Email;
-
+                _context.Entry(existingPatient).CurrentValues.SetValues(patient);
                 await _context.SaveChangesAsync();
-
-                _logger.LogInformation("Successfully updated patient with ID: {PatientId}", patient.Id);
+                
+                _logger.LogInformation("Patient updated: {PatientId}", patient.Id);
                 return existingPatient;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error updating patient with ID: {PatientId}", patient.Id);
+                _logger.LogError(ex, "Error updating patient: {PatientId}", patient.Id);
                 throw;
             }
         }
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task<bool> DeletePatientAsync(int id)
         {
             try
             {
-                _logger.LogInformation("Deleting patient with ID: {PatientId}", id);
-
                 var patient = await _context.Patients.FindAsync(id);
                 if (patient == null)
                 {
-                    _logger.LogWarning("Patient with ID {PatientId} not found for deletion", id);
                     return false;
                 }
 
                 _context.Patients.Remove(patient);
                 await _context.SaveChangesAsync();
-
-                _logger.LogInformation("Successfully deleted patient with ID: {PatientId}", id);
+                
+                _logger.LogInformation("Patient deleted: {PatientId}", id);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting patient with ID: {PatientId}", id);
+                _logger.LogError(ex, "Error deleting patient: {PatientId}", id);
                 throw;
             }
         }
 
-        public async Task<bool> ExistsAsync(int id)
+        public async Task<IEnumerable<Patient>> GetRecentPatientsAsync(int count = 50)
         {
             try
             {
-                return await _context.Patients.AnyAsync(p => p.Id == id);
+                return await _context.Patients
+                    .OrderByDescending(p => p.Id) // In reality, use CreatedAt if available
+                    .Take(count)
+                    .ToListAsync();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking if patient exists with ID: {PatientId}", id);
+                _logger.LogError(ex, "Error getting recent patients");
+                throw;
+            }
+        }
+
+        public async Task<int> GetPatientCountAsync()
+        {
+            try
+            {
+                return await _context.Patients.CountAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting patient count");
                 throw;
             }
         }

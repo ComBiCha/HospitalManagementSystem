@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using NotificationService.API.Data;
-using NotificationService.API.Models;
+using NotificationService.API.Services;
+using NotificationService.API.Services.Interfaces;
 
 namespace NotificationService.API.Controllers
 {
@@ -9,130 +8,97 @@ namespace NotificationService.API.Controllers
     [Route("api/[controller]")]
     public class NotificationsController : ControllerBase
     {
-        private readonly NotificationDbContext _context;
-        private readonly ILogger<NotificationsController> _logger;
+        private readonly NotificationServiceManager _notificationService;
 
-        public NotificationsController(NotificationDbContext context, ILogger<NotificationsController> logger)
+        public NotificationsController(NotificationServiceManager notificationService)
         {
-            _context = context;
-            _logger = logger;
+            _notificationService = notificationService;
         }
 
         /// <summary>
-        /// Get all notifications
+        /// Send a notification
         /// </summary>
-        /// <returns>List of notifications</returns>
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<Notification>>> GetNotifications()
+        /// <param name="request">Notification details</param>
+        /// <returns>Success or failure response</returns>
+        [HttpPost("send")]
+        public async Task<IActionResult> SendNotification([FromBody] SendNotificationRequest request)
         {
-            try
+            var message = new NotificationMessage
             {
-                _logger.LogInformation("Getting all notifications via REST API");
-                var notifications = await _context.Notifications
-                    .OrderByDescending(n => n.CreatedAt)
-                    .ToListAsync();
-                return Ok(notifications);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting all notifications");
-                return StatusCode(500, "Internal server error");
-            }
+                Recipient = request.Recipient,
+                Subject = request.Subject,
+                Content = request.Content,
+                Metadata = request.Metadata ?? new Dictionary<string, object>()
+            };
+
+            var result = await _notificationService.SendNotificationAsync(request.ChannelType, message);
+            
+            return result ? Ok(new { Success = true }) : BadRequest(new { Success = false });
         }
 
         /// <summary>
-        /// Get notification by ID
+        /// Send a notification via multiple channels
         /// </summary>
-        /// <param name="id">Notification ID</param>
-        /// <returns>Notification details</returns>
-        [HttpGet("{id}")]
-        public async Task<ActionResult<Notification>> GetNotification(int id)
+        /// <param name="request">Notification details for multiple channels</param>
+        /// <returns>Results of the send operation for each channel</returns>
+        [HttpPost("send-multi")]
+        public async Task<IActionResult> SendMultiChannelNotification([FromBody] SendMultiChannelRequest request)
+        {
+            var message = new NotificationMessage
+            {
+                Recipient = request.Recipient,
+                Subject = request.Subject,
+                Content = request.Content,
+                Metadata = request.Metadata ?? new Dictionary<string, object>()
+            };
+
+            var results = await _notificationService.SendMultiChannelAsync(request.ChannelTypes, message);
+            
+            return Ok(new { Results = results });
+        }
+
+        /// <summary>
+        /// Test email sending
+        /// </summary>
+        /// <param name="toEmail">Recipient email address</param>
+        /// <returns>Success or failure response</returns>
+        [HttpPost("test-email")]
+        public async Task<IActionResult> TestEmail([FromBody] string toEmail)
         {
             try
             {
-                var notification = await _context.Notifications.FindAsync(id);
-                if (notification == null)
+                var message = new NotificationMessage
                 {
-                    return NotFound($"Notification with ID {id} not found");
-                }
+                    Recipient = toEmail,
+                    Subject = "Test Email from HMS",
+                    Content = "This is a test email from Hospital Management System"
+                };
 
-                return Ok(notification);
+                var result = await _notificationService.SendNotificationAsync("Email", message);
+                return Ok(new { Success = result, Message = "Email test completed" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting notification with ID: {NotificationId}", id);
-                return StatusCode(500, "Internal server error");
+                return BadRequest(new { Success = false, Message = ex.Message });
             }
         }
+    }
 
-        /// <summary>
-        /// Get notifications by appointment ID
-        /// </summary>
-        /// <param name="appointmentId">Appointment ID</param>
-        /// <returns>List of notifications for the appointment</returns>
-        [HttpGet("appointment/{appointmentId}")]
-        public async Task<ActionResult<IEnumerable<Notification>>> GetNotificationsByAppointment(int appointmentId)
-        {
-            try
-            {
-                var notifications = await _context.Notifications
-                    .Where(n => n.AppointmentId == appointmentId)
-                    .OrderByDescending(n => n.CreatedAt)
-                    .ToListAsync();
-                return Ok(notifications);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting notifications for appointment: {AppointmentId}", appointmentId);
-                return StatusCode(500, "Internal server error");
-            }
-        }
+    public class SendNotificationRequest
+    {
+        public required string Recipient { get; set; }
+        public required string Subject { get; set; }
+        public required string Content { get; set; }
+        public required string ChannelType { get; set; }
+        public Dictionary<string, object>? Metadata { get; set; }
+    }
 
-        /// <summary>
-        /// Mark notification as read
-        /// </summary>
-        /// <param name="id">Notification ID</param>
-        /// <returns>Updated notification</returns>
-        [HttpPut("{id}/read")]
-        public async Task<ActionResult<Notification>> MarkAsRead(int id)
-        {
-            try
-            {
-                var notification = await _context.Notifications.FindAsync(id);
-                if (notification == null)
-                {
-                    return NotFound($"Notification with ID {id} not found");
-                }
-
-                notification.IsRead = true;
-                await _context.SaveChangesAsync();
-
-                return Ok(notification);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error marking notification as read: {NotificationId}", id);
-                return StatusCode(500, "Internal server error");
-            }
-        }
-
-        /// <summary>
-        /// Get unread notifications count
-        /// </summary>
-        /// <returns>Count of unread notifications</returns>
-        [HttpGet("unread/count")]
-        public async Task<ActionResult<int>> GetUnreadCount()
-        {
-            try
-            {
-                var count = await _context.Notifications.CountAsync(n => !n.IsRead);
-                return Ok(count);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting unread notifications count");
-                return StatusCode(500, "Internal server error");
-            }
-        }
+    public class SendMultiChannelRequest
+    {
+        public required string Recipient { get; set; }
+        public required string Subject { get; set; }
+        public required string Content { get; set; }
+        public required List<string> ChannelTypes { get; set; }
+        public Dictionary<string, object>? Metadata { get; set; }
     }
 }

@@ -31,7 +31,7 @@ namespace PatientService.API.Services
                     Email = request.Email
                 };
 
-                var createdPatient = await _patientRepository.CreateAsync(patient);
+                var createdPatient = await _patientRepository.CreatePatientAsync(patient);
 
                 return new PatientResponse
                 {
@@ -54,7 +54,7 @@ namespace PatientService.API.Services
 
             try
             {
-                var patient = await _patientRepository.GetByIdAsync(request.Id);
+                var patient = await _patientRepository.GetPatientByIdAsync(request.Id);
 
                 if (patient == null)
                 {
@@ -94,7 +94,7 @@ namespace PatientService.API.Services
                     Email = request.Email
                 };
 
-                var updatedPatient = await _patientRepository.UpdateAsync(patient);
+                var updatedPatient = await _patientRepository.UpdatePatientAsync(patient);
 
                 if (updatedPatient == null)
                 {
@@ -126,7 +126,7 @@ namespace PatientService.API.Services
 
             try
             {
-                var deleted = await _patientRepository.DeleteAsync(request.Id);
+                var deleted = await _patientRepository.DeletePatientAsync(request.Id);
 
                 if (!deleted)
                 {
@@ -152,7 +152,7 @@ namespace PatientService.API.Services
 
             try
             {
-                var patients = await _patientRepository.GetAllAsync();
+                var patients = await _patientRepository.GetAllPatientsAsync();
 
                 var response = new PatientList();
                 
@@ -178,5 +178,3 @@ namespace PatientService.API.Services
         }
     }
 }
-
-

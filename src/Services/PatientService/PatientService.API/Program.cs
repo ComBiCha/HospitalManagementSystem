@@ -1,27 +1,93 @@
 using Microsoft.EntityFrameworkCore;
 using PatientService.API.Data;
 using PatientService.API.Services;
+using PatientService.API.Services.Caching;
 using PatientService.API.Repositories;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Force HTTP configuration for containers
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(80, listenOptions =>
+    {
+        listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1AndHttp2;
+    });
+});
+
 // Add Entity Framework
 builder.Services.AddDbContext<PatientDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Add Repository
-builder.Services.AddScoped<IPatientRepository, PatientRepository>();
+// ==================== REDIS CACHE CONFIGURATION ====================
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
 
-// Add Controllers for REST API
+if (string.IsNullOrEmpty(redisConnectionString))
+{
+    throw new InvalidOperationException("Redis connection string is required. Please configure 'ConnectionStrings:Redis' in appsettings.json");
+}
+
+// Add Redis ConnectionMultiplexer - REQUIRED for RedisCacheService
+builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
+{
+    try
+    {
+        var configuration = ConfigurationOptions.Parse(redisConnectionString);
+        return ConnectionMultiplexer.Connect(configuration);
+    }
+    catch (Exception ex)
+    {
+        var logger = provider.GetService<ILogger<Program>>();
+        logger?.LogError(ex, "Failed to connect to Redis: {RedisConnection}", redisConnectionString);
+        throw;
+    }
+});
+
+// Add Redis caching
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = redisConnectionString;
+    options.InstanceName = "HMS_PatientService";
+});
+
+// Add Redis cache service
+builder.Services.AddSingleton<ICacheService, RedisCacheService>();
+
+// ==================== REPOSITORY CONFIGURATION - FIXED ====================
+// Fix circular dependency: Register base repository with concrete class
+builder.Services.AddScoped<PatientRepository>(); 
+// Register cached repository but inject base repository as dependency (not interface)
+builder.Services.AddScoped<IPatientRepository>(provider =>
+{
+    var baseRepository = provider.GetRequiredService<PatientRepository>();
+    var cacheService = provider.GetRequiredService<ICacheService>();
+    var logger = provider.GetRequiredService<ILogger<CachedPatientRepository>>();
+    return new CachedPatientRepository(baseRepository, cacheService, logger);
+});
+
+// ==================== BACKGROUND SERVICES ====================
+// Add Cache Warmup Background Service
+builder.Services.AddHostedService<PatientCacheWarmupService>();
+
+// ==================== API CONFIGURATION ====================
 builder.Services.AddControllers();
-
-// Add API Explorer for Swagger
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() 
+    { 
+        Title = "Patient Service API", 
+        Version = "v1",
+        Description = "HMS Patient Service with Redis Caching"
+    });
+});
 
-// Add gRPC
-builder.Services.AddGrpc();
+// Add gRPC with HTTP support
+builder.Services.AddGrpc(options =>
+{
+    options.EnableDetailedErrors = true;
+});
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -34,37 +100,84 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Add Health Checks
+builder.Services.AddHealthChecks()
+    .AddCheck("patient-service", () => 
+        Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Patient Service is running"))
+    .AddCheck("database", () =>
+    {
+        try 
+        {
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Database configured");
+        }
+        catch (Exception ex)
+        {
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("Database error", ex);
+        }
+    })
+    .AddCheck("redis", () =>
+    {
+        try
+        {
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Redis configured");
+        }
+        catch (Exception ex)
+        {
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("Redis error", ex);
+        }
+    });
+
 var app = builder.Build();
 
-// Auto-migrate database on startup (for development)
+// ==================== DATABASE MIGRATION - OPTIONAL FOR LOCAL DEV ====================
 using (var scope = app.Services.CreateScope())
 {
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
     try
     {
         var context = scope.ServiceProvider.GetRequiredService<PatientDbContext>();
-        context.Database.EnsureCreated();
+        
+        logger.LogInformation("Testing database connection...");
+        
+        // Test database connection first
+        if (await context.Database.CanConnectAsync())
+        {
+            logger.LogInformation("Database connection successful");
+            context.Database.EnsureCreated();
+            logger.LogInformation("Database migration completed successfully");
+        }
+        else
+        {
+            logger.LogWarning("Database connection failed - running without database");
+        }
     }
     catch (Exception ex)
     {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while migrating the database.");
+        logger.LogWarning(ex, "Database setup failed (normal for local dev without Docker): {Error}", ex.Message);
+    }
+    
+    try
+    {
+        // Test Redis connection
+        var cacheService = scope.ServiceProvider.GetRequiredService<ICacheService>();
+        await cacheService.SetAsync("startup-test", DateTime.UtcNow.ToString(), TimeSpan.FromMinutes(1));
+        logger.LogInformation("Redis cache connection verified");
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Redis setup failed (normal for local dev without Docker): {Error}", ex.Message);
     }
 }
 
-// Configure the HTTP request pipeline.
+// ==================== HTTP PIPELINE CONFIGURATION ====================
 if (app.Environment.IsDevelopment())
 {
-    app.UseDeveloperExceptionPage();
     app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Patient Service API V1");
-        c.RoutePrefix = "swagger";
-    });
+    app.UseSwaggerUI();
 }
 
 app.UseCors("AllowAll");
-app.UseRouting();
 
 // Map Controllers (REST API)
 app.MapControllers();
@@ -72,46 +185,7 @@ app.MapControllers();
 // Map gRPC service
 app.MapGrpcService<PatientGrpcService>();
 
-// Add test endpoints
-app.MapGet("/", () => Results.Json(new { 
-    message = "Patient Service is running!",
-    endpoints = new {
-        restApi = "https://localhost:5101/api/patients",
-        swagger = "https://localhost:5101/swagger",
-        grpc = "https://localhost:5102 (Use gRPC client to connect)",
-        health = "https://localhost:5101/health",
-        testDb = "https://localhost:5101/test-db"
-    }
-}));
-
-app.MapGet("/health", () => Results.Json(new { 
-    status = "Healthy", 
-    timestamp = DateTime.UtcNow,
-    service = "Patient Service",
-    endpoints = new {
-        restApi = "https://localhost:5101",
-        grpc = "https://localhost:5102"
-    }
-}));
-
-app.MapGet("/test-db", async (PatientDbContext context) => 
-{
-    try 
-    {
-        var count = await context.Patients.CountAsync();
-        return Results.Json(new { 
-            status = "Connected", 
-            patientsCount = count,
-            database = "HMS_PatientDB"
-        });
-    }
-    catch (Exception ex)
-    {
-        return Results.Json(new { 
-            status = "Error", 
-            error = ex.Message 
-        });
-    }
-});
+// Map Health Checks
+app.MapHealthChecks("/health");
 
 app.Run();

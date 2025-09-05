@@ -5,7 +5,15 @@ using DoctorService.API.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Force HTTP configuration for containers
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.ListenAnyIP(80, listenOptions =>
+    {
+        listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1AndHttp2;
+    });
+});
+
 // Add Entity Framework
 builder.Services.AddDbContext<DoctorDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -18,10 +26,21 @@ builder.Services.AddControllers();
 
 // Add API Explorer for Swagger
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() 
+    { 
+        Title = "Doctor Service API", 
+        Version = "v1",
+        Description = "HMS Doctor Service"
+    });
+});
 
-// Add gRPC
-builder.Services.AddGrpc();
+// Add gRPC with HTTP support
+builder.Services.AddGrpc(options =>
+{
+    options.EnableDetailedErrors = true;
+});
 
 // Add CORS
 builder.Services.AddCors(options =>
@@ -34,37 +53,66 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Add Health Checks
+builder.Services.AddHealthChecks()
+    .AddCheck("doctor-service", () => 
+        Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Doctor Service is running"))
+    .AddCheck("database", () =>
+    {
+        try 
+        {
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("Database configured");
+        }
+        catch (Exception ex)
+        {
+            return Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("Database error", ex);
+        }
+    });
+
+// DO NOT ADD HTTPS REDIRECTION
+// builder.Services.AddHttpsRedirection(); // REMOVE IF EXISTS
+
 var app = builder.Build();
 
-// Auto-migrate database on startup (for development)
+// Auto-migrate database on startup
 using (var scope = app.Services.CreateScope())
 {
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
     try
     {
         var context = scope.ServiceProvider.GetRequiredService<DoctorDbContext>();
-        context.Database.EnsureCreated();
+        
+        logger.LogInformation("Testing Doctor Service database connection...");
+        
+        if (await context.Database.CanConnectAsync())
+        {
+            logger.LogInformation("Doctor Service database connection successful");
+            context.Database.EnsureCreated();
+            logger.LogInformation("Doctor Service database migration completed successfully");
+        }
+        else
+        {
+            logger.LogWarning("Doctor Service database connection failed - running without database");
+        }
     }
     catch (Exception ex)
     {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while migrating the database.");
+        logger.LogWarning(ex, "Doctor Service database setup failed: {Error}", ex.Message);
     }
 }
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
-    app.UseDeveloperExceptionPage();
     app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "Doctor Service API V1");
-        c.RoutePrefix = "swagger";
-    });
+    app.UseSwaggerUI();
 }
 
+// DO NOT USE HTTPS REDIRECTION
+// app.UseHttpsRedirection(); // REMOVE THIS LINE IF EXISTS
+
 app.UseCors("AllowAll");
-app.UseRouting();
 
 // Map Controllers (REST API)
 app.MapControllers();
@@ -72,46 +120,7 @@ app.MapControllers();
 // Map gRPC service
 app.MapGrpcService<DoctorGrpcService>();
 
-// Add test endpoints
-app.MapGet("/", () => Results.Json(new { 
-    message = "Doctor Service is running!",
-    endpoints = new {
-        restApi = "https://localhost:5201/api/doctors",
-        swagger = "https://localhost:5201/swagger",
-        grpc = "https://localhost:5202 (Use gRPC client to connect)",
-        health = "https://localhost:5201/health",
-        testDb = "https://localhost:5201/test-db"
-    }
-}));
-
-app.MapGet("/health", () => Results.Json(new { 
-    status = "Healthy", 
-    timestamp = DateTime.UtcNow,
-    service = "Doctor Service",
-    endpoints = new {
-        restApi = "https://localhost:5201",
-        grpc = "https://localhost:5202"
-    }
-}));
-
-app.MapGet("/test-db", async (DoctorDbContext context) => 
-{
-    try 
-    {
-        var count = await context.Doctors.CountAsync();
-        return Results.Json(new { 
-            status = "Connected", 
-            doctorsCount = count,
-            database = "HMS_DoctorDB"
-        });
-    }
-    catch (Exception ex)
-    {
-        return Results.Json(new { 
-            status = "Error", 
-            error = ex.Message 
-        });
-    }
-});
+// Map Health Checks
+app.MapHealthChecks("/health");
 
 app.Run();
