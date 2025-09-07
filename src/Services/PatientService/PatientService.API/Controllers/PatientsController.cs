@@ -192,7 +192,7 @@ namespace PatientService.API.Controllers
                     await cachedRepo.WarmupCacheAsync();
                     return Ok(new { message = "Cache warmup completed successfully" });
                 }
-                
+
                 return BadRequest(new { message = "Caching is not enabled" });
             }
             catch (Exception ex)
@@ -250,5 +250,68 @@ namespace PatientService.API.Controllers
                 return StatusCode(500, new { message = "Error getting cache info" });
             }
         }
+
+        [HttpPost("{id}/status")]
+        public async Task<IActionResult> UpdatePatientStatus(int id, [FromBody] PatientStatusRequest request)
+        {
+            var patient = await _patientRepository.GetPatientByIdAsync(id);
+            if (patient == null) return NotFound();
+
+            // Thêm status mới
+            if (request.Action == "add")
+                patient.AddStatus(request.Status);
+
+            // Xóa status
+            else if (request.Action == "remove")
+                patient.RemoveStatus(request.Status);
+
+            // Set status hoàn toàn mới
+            else if (request.Action == "set")
+                patient.Status = request.Status;
+
+            patient.UpdatedAt = DateTime.UtcNow;
+            await _patientRepository.UpdatePatientAsync(patient);
+
+            return Ok(new
+            {
+                Id = patient.Id,
+                Name = patient.Name,
+                Status = patient.Status.ToString(),
+                IsActive = patient.IsActive,
+                IsInTreatment = patient.IsInTreatment,
+                IsEmergency = patient.IsEmergency
+            });
+        }
+
+        [HttpGet("{id}/status")]
+        public async Task<IActionResult> GetPatientStatus(int id)
+        {
+            var patient = await _patientRepository.GetPatientByIdAsync(id);
+            if (patient == null) return NotFound();
+
+            return Ok(new
+            {
+                Id = patient.Id,
+                Name = patient.Name,
+                Status = patient.Status.ToString(),
+                StatusValue = (int)patient.Status,
+                Flags = new
+                {
+                    IsActive = patient.IsActive,
+                    IsInTreatment = patient.IsInTreatment,
+                    IsEmergency = patient.IsEmergency,
+                    IsAdmitted = patient.IsAdmitted,
+                    IsDischarged = patient.IsDischarged,
+                    IsOnHold = patient.IsOnHold
+                }
+            });
+        }
+
+
     }
+            public class PatientStatusRequest
+        {
+            public PatientStatus Status { get; set; }
+            public string Action { get; set; } = "add"; // add, remove, set
+        }
 }

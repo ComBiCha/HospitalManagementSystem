@@ -3,6 +3,14 @@ using Ocelot.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.ListenAnyIP(80, listenOptions =>
+    {
+        // Chỉ HTTP, không HTTPS
+    });
+});
+
 // Add services to the container
 builder.Services.AddControllers();
 
