@@ -11,26 +11,26 @@ namespace AppointmentService.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] // ✅ JWT Authentication required
+    [Authorize] 
     public class AppointmentsController : ControllerBase
     {
         private readonly IAppointmentRepository _appointmentRepository;
         private readonly IPatientGrpcClient _patientGrpcClient;
         private readonly IDoctorGrpcClient _doctorGrpcClient;
-        private readonly IRabbitMQService _rabbitMQService; // ✅ RabbitMQ Service
+        private readonly IRabbitMQService _rabbitMQService;
         private readonly ILogger<AppointmentsController> _logger;
 
         public AppointmentsController(
             IAppointmentRepository appointmentRepository,
             IPatientGrpcClient patientGrpcClient,
             IDoctorGrpcClient doctorGrpcClient,
-            IRabbitMQService rabbitMQService, // ✅ RabbitMQ injection
+            IRabbitMQService rabbitMQService, 
             ILogger<AppointmentsController> logger)
         {
             _appointmentRepository = appointmentRepository;
             _patientGrpcClient = patientGrpcClient;
             _doctorGrpcClient = doctorGrpcClient;
-            _rabbitMQService = rabbitMQService; // ✅ RabbitMQ assignment
+            _rabbitMQService = rabbitMQService; 
             _logger = logger;
         }
 
@@ -87,7 +87,6 @@ namespace AppointmentService.API.Controllers
                     return NotFound($"Appointment with ID {id} not found");
                 }
 
-                // ✅ Role-based access control
                 if (!await CanAccessAppointment(appointment, currentUserId, currentUserRole))
                 {
                     return Forbid("You don't have permission to access this appointment");
@@ -114,7 +113,6 @@ namespace AppointmentService.API.Controllers
                 var currentUserId = GetCurrentUserId();
                 var currentUserRole = GetCurrentUserRole();
 
-                // ✅ Patients can only view their own appointments
                 if (currentUserRole == "Patient")
                 {
                     var userPatientId = GetCurrentUserPatientId();
@@ -157,7 +155,6 @@ namespace AppointmentService.API.Controllers
                 var currentUserId = GetCurrentUserId();
                 var currentUserRole = GetCurrentUserRole();
 
-                // ✅ Doctors can only view their own appointments
                 if (currentUserRole == "Doctor")
                 {
                     var userDoctorId = GetCurrentUserDoctorId();
@@ -200,7 +197,6 @@ namespace AppointmentService.API.Controllers
                 var currentUserId = GetCurrentUserId();
                 var currentUserRole = GetCurrentUserRole();
 
-                // ✅ Patients can only create appointments for themselves
                 if (currentUserRole == "Patient")
                 {
                     var userPatientId = GetCurrentUserPatientId();
@@ -264,7 +260,6 @@ namespace AppointmentService.API.Controllers
 
                 var createdAppointment = await _appointmentRepository.CreateAsync(appointment);
 
-                // ✅ Publish event to RabbitMQ with user context
                 await _rabbitMQService.PublishAppointmentCreatedAsync(new
                 {
                     AppointmentId = createdAppointment.Id,
@@ -276,8 +271,8 @@ namespace AppointmentService.API.Controllers
                     Date = createdAppointment.Date,
                     Status = createdAppointment.Status,
                     CreatedAt = createdAppointment.CreatedAt,
-                    CreatedByUserId = currentUserId, // ✅ Track who created
-                    CreatedByRole = currentUserRole   // ✅ Track user role
+                    CreatedByUserId = currentUserId, 
+                    CreatedByRole = currentUserRole   
                 });
 
                 var appointmentDto = await MapToAppointmentDto(createdAppointment);
@@ -320,7 +315,6 @@ namespace AppointmentService.API.Controllers
                     return NotFound($"Appointment with ID {id} not found");
                 }
 
-                // ✅ Role-based access control
                 if (!await CanAccessAppointment(existingAppointment, currentUserId, currentUserRole))
                 {
                     return Forbid("You don't have permission to update this appointment");
@@ -369,7 +363,6 @@ namespace AppointmentService.API.Controllers
                     return NotFound($"Appointment with ID {id} not found");
                 }
 
-                // ✅ Publish event to RabbitMQ with user context
                 await _rabbitMQService.PublishAppointmentUpdatedAsync(new
                 {
                     AppointmentId = updatedAppointment.Id,
@@ -381,8 +374,8 @@ namespace AppointmentService.API.Controllers
                     Date = updatedAppointment.Date,
                     Status = updatedAppointment.Status,
                     UpdatedAt = updatedAppointment.UpdatedAt,
-                    UpdatedByUserId = currentUserId, // ✅ Track who updated
-                    UpdatedByRole = currentUserRole   // ✅ Track user role
+                    UpdatedByUserId = currentUserId, 
+                    UpdatedByRole = currentUserRole  
                 });
 
                 var appointmentDto = await MapToAppointmentDto(updatedAppointment);
@@ -441,8 +434,8 @@ namespace AppointmentService.API.Controllers
                     Date = appointment.Date,
                     Status = "Cancelled",
                     CancelledAt = DateTime.UtcNow,
-                    CancelledByUserId = currentUserId, // ✅ Track who cancelled
-                    CancelledByRole = currentUserRole   // ✅ Track user role
+                    CancelledByUserId = currentUserId, 
+                    CancelledByRole = currentUserRole   
                 });
 
                 _logger.LogInformation("Appointment {AppointmentId} cancelled by user {UserId} with role {Role}", 

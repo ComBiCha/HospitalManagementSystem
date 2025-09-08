@@ -5,36 +5,39 @@
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
-          "Host": "localhost",
-          "Port": 5100
+          "Host": "patient-service",
+          "Port": 80
         }
       ],
       "UpstreamPathTemplate": "/api/patients/{catchAll}",
       "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
-      "Key": "patients-catchall",
-      "RequestIdKey": "X-Request-ID",
-      "AddHeadersToRequest": {
-        "X-Forwarded-For": "{RemoteIpAddress}",
-        "X-Gateway": "HMS-Development"
-      }
+      "Key": "patients-catchall"
     },
     {
       "DownstreamPathTemplate": "/api/doctors/{catchAll}",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [
         {
-          "Host": "localhost",
-          "Port": 5200
+          "Host": "doctor-service",
+          "Port": 80
         }
       ],
       "UpstreamPathTemplate": "/api/doctors/{catchAll}",
       "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
-      "Key": "doctors-catchall",
-      "RequestIdKey": "X-Request-ID",
-      "AddHeadersToRequest": {
-        "X-Forwarded-For": "{RemoteIpAddress}",
-        "X-Gateway": "HMS-Development"
-      }
+      "Key": "doctors-catchall"
+    },
+    {
+      "DownstreamPathTemplate": "/api/billing/{catchAll}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "billing-service",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/api/billing/{catchAll}",
+      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "Key": "billing-catchall"
     }
   ],
   "GlobalConfiguration": {

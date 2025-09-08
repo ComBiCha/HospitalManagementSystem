@@ -6,7 +6,7 @@ namespace PatientService.API.Repositories
     {
         Task<Patient?> GetPatientByIdAsync(int id);
         Task<Patient?> GetPatientByEmailAsync(string email);
-        Task<IEnumerable<Patient>> GetAllPatientsAsync();
+        Task<IEnumerable<Patient>> GetAllPatientsAsync(int page = 1, int pageSize = 50);
         Task<IEnumerable<Patient>> GetPatientsByNameAsync(string name);
         Task<Patient> CreatePatientAsync(Patient patient);
         Task<Patient?> UpdatePatientAsync(Patient patient);

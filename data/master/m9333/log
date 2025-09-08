@@ -1,0 +1,4 @@
+      58
+	raft:join"I{"name":"seaweed-master:9333","connectionString":"seaweed-master:19333"}
+       c
+raft:nop

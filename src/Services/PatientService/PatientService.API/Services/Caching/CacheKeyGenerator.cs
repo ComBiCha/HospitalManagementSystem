@@ -9,7 +9,7 @@ namespace PatientService.API.Services.Caching
         public static string PatientById(int patientId) => $"{PATIENT_PREFIX}{SEPARATOR}id{SEPARATOR}{patientId}";
         public static string PatientByEmail(string email) => $"{PATIENT_PREFIX}{SEPARATOR}email{SEPARATOR}{email.ToLowerInvariant()}";
         public static string PatientsByName(string name) => $"{PATIENT_PREFIX}{SEPARATOR}name{SEPARATOR}{name.ToLowerInvariant()}";
-        public static string AllPatients() => $"{PATIENT_PREFIX}{SEPARATOR}all";
+        public static string AllPatients(int page, int pageSize) => $"patient:all:{page}:{pageSize}";
         public static string RecentPatients(int count) => $"{PATIENT_PREFIX}{SEPARATOR}recent{SEPARATOR}{count}";
         
         // Patient Statistics

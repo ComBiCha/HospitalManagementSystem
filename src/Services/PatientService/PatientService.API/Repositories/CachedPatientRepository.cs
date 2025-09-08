@@ -69,30 +69,22 @@ namespace PatientService.API.Repositories
             return patient;
         }
 
-        public async Task<IEnumerable<Patient>> GetAllPatientsAsync()
+        public async Task<IEnumerable<Patient>> GetAllPatientsAsync(int page = 1, int pageSize = 50)
         {
-            var cacheKey = CacheKeyGenerator.AllPatients();
-            
+            var cacheKey = CacheKeyGenerator.AllPatients(page, pageSize);
+
             var cachedPatients = await _cacheService.GetAsync<IEnumerable<Patient>>(cacheKey);
             if (cachedPatients != null)
             {
-                _logger.LogDebug("All patients retrieved from cache");
+                _logger.LogDebug("Patients page {Page} retrieved from cache", page);
                 return cachedPatients;
             }
 
-            var patients = await _repository.GetAllPatientsAsync();
+            var patients = await _repository.GetAllPatientsAsync(page, pageSize);
             if (patients?.Any() == true)
             {
                 await _cacheService.SetAsync(cacheKey, patients, CacheExpiry.PatientList);
-                
-                // Cache individual patients as well
-                foreach (var patient in patients)
-                {
-                    var individualKey = CacheKeyGenerator.PatientById(patient.Id);
-                    await _cacheService.SetAsync(individualKey, patient, CacheExpiry.PatientInfo);
-                }
-                
-                _logger.LogDebug("All patients cached ({Count} patients)", patients.Count());
+                _logger.LogDebug("Patients page {Page} cached ({Count} patients)", page, patients.Count());
             }
 
             return patients ?? Enumerable.Empty<Patient>();
@@ -139,35 +131,43 @@ namespace PatientService.API.Repositories
 
         public async Task<Patient?> UpdatePatientAsync(Patient patient)
         {
-            // Get the existing patient to know the old email for cache invalidation
             var existingPatient = await _repository.GetPatientByIdAsync(patient.Id);
-            
             var updatedPatient = await _repository.UpdatePatientAsync(patient);
-            
+
             if (updatedPatient != null)
             {
-                // Update caches with new data
+                // Nếu dữ liệu không đổi, không cache lại
+                if (existingPatient != null &&
+                    existingPatient.Name == updatedPatient.Name &&
+                    existingPatient.Email == updatedPatient.Email &&
+                    existingPatient.Age == updatedPatient.Age &&
+                    existingPatient.Status == updatedPatient.Status)
+                {
+                    return updatedPatient;
+                }
+
                 var idCacheKey = CacheKeyGenerator.PatientById(patient.Id);
-                var newEmailCacheKey = CacheKeyGenerator.PatientByEmail(updatedPatient.Email);
-                
-                await _cacheService.SetAsync(idCacheKey, updatedPatient, CacheExpiry.PatientInfo);
-                await _cacheService.SetAsync(newEmailCacheKey, updatedPatient, CacheExpiry.PatientInfo);
-                
-                // Remove old email cache if email changed
+                var emailCacheKey = CacheKeyGenerator.PatientByEmail(updatedPatient.Email);
+
+                // Nếu email đổi, xóa cache cũ theo email
                 if (existingPatient != null && existingPatient.Email != updatedPatient.Email)
                 {
                     var oldEmailCacheKey = CacheKeyGenerator.PatientByEmail(existingPatient.Email);
                     await _cacheService.RemoveAsync(oldEmailCacheKey);
                 }
-                
-                // Invalidate related caches
+
+                // Cache lại theo id và email (dù email đổi hay không)
+                await _cacheService.SetAsync(idCacheKey, updatedPatient, CacheExpiry.PatientInfo);
+                await _cacheService.SetAsync(emailCacheKey, updatedPatient, CacheExpiry.PatientInfo);
+
+                // Invalidate các cache liên quan
                 await InvalidateListCaches();
                 await InvalidateSearchCaches(updatedPatient.Name);
                 if (existingPatient?.Name != updatedPatient.Name)
                 {
                     await InvalidateSearchCaches(existingPatient?.Name);
                 }
-                
+
                 _logger.LogInformation("Patient {PatientId} updated and cache refreshed", patient.Id);
             }
 
@@ -245,7 +245,7 @@ namespace PatientService.API.Repositories
         {
             var listKeys = new[]
             {
-                CacheKeyGenerator.AllPatients(),
+                CacheKeyGenerator.AllPatients(1, 50),
                 CacheKeyGenerator.PatientCount()
             };
 

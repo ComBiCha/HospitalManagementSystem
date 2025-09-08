@@ -14,7 +14,6 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 // Add services to the container
 builder.Services.AddControllers();
 
-// ADD HTTPCLIENT SERVICE - QUAN TRỌNG!
 builder.Services.AddHttpClient();
 
 // Add Swagger/OpenAPI

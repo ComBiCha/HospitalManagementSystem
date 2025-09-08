@@ -318,6 +318,47 @@ services:
     networks:
       - hms-network
 
+  seaweed-master:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweed-master
+    command: master -ip=seaweed-master -mdir=/data -port=9333
+    volumes:
+      - ./data/master:/data
+    ports:
+      - "9333:9333"
+    restart: unless-stopped
+    networks:
+      - hms-network
+
+  seaweed-volume:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweed-volume
+    command: volume -ip=seaweed-volume -dir=/data -mserver=seaweed-master:9333 -port=8080
+    volumes:
+      - ./data/volume:/data
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    depends_on:
+      - seaweed-master
+    networks:
+      - hms-network
+
+  seaweed-filer:
+    image: chrislusf/seaweedfs:latest
+    container_name: seaweed-filer
+    command: filer -ip=seaweed-filer -master=seaweed-master:9333 -port=8888 -defaultStoreDir=/data
+    volumes:
+      - ./data/filer:/data
+    ports:
+      - "8888:8888"
+    restart: unless-stopped
+    depends_on:
+      - seaweed-master
+      - seaweed-volume
+    networks:
+      - hms-network
+
   # Image Service API
   image-service:
     build:
@@ -328,6 +369,9 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:80
       - ConnectionStrings__DefaultConnection=Host=image-postgres;Port=5432;Database=HMS_ImageDB;Username=postgres;Password=postgres123
+      - SeaweedFS__MasterUrl=http://seaweed-master:9333
+      - SeaweedFS__PublicUrl=http://seaweed-filer:8888
+      - SeaweedFS__Replication=001
       - MinIO__Endpoint=minio:9000
       - MinIO__AccessKey=minioadmin
       - MinIO__SecretKey=minioadmin
@@ -342,6 +386,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      seaweed-filer:
+        condition: service_started
     restart: unless-stopped
     networks:
       - hms-network

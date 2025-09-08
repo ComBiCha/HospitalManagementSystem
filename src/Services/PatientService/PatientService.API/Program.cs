@@ -20,6 +20,18 @@ builder.Services.AddDbContext<PatientDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ==================== REDIS CACHE CONFIGURATION ====================
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration.GetConnectionString("Redis");
+    options.InstanceName = "PatientService";
+});
+
+builder.Services.AddScoped<ICacheService, RedisCacheService>();
+
+// Add Repositories
+builder.Services.AddScoped<IPatientRepository, PatientRepository>();
+builder.Services.AddScoped<CachedPatientRepository>();
+
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
 
 if (string.IsNullOrEmpty(redisConnectionString))

@@ -162,7 +162,7 @@ namespace DoctorService.API.Controllers
                     Id = id,
                     Name = request.Name,
                     Specialty = request.Specialty,
-                    Email = request.Email  // ✅ Update email
+                    Email = request.Email  
                 };
 
                 var updatedDoctor = await _doctorRepository.UpdateAsync(doctor);

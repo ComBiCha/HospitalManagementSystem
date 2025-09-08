@@ -1,10 +1,29 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace DoctorService.API.Models
 {
+    [Table("Doctors")]
     public class Doctor
     {
+        [Key]
+        [Column("Id")]
         public int Id { get; set; }
+        
+        [Required]
+        [StringLength(200)]
+        [Column("Name")]
         public string Name { get; set; } = string.Empty;
+        
+        [Required]
+        [StringLength(100)]
+        [Column("Specialty")]
         public string Specialty { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;  // ✅ Added Email field
+        
+        [Required]
+        [EmailAddress]
+        [StringLength(255)]
+        [Column("Email")]
+        public string Email { get; set; } = string.Empty;
     }
 }

@@ -61,6 +61,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddHttpClient<IStorageService, SeaweedStorageService>();
+
 // MinIO
 builder.Services.AddMinio(configureClient => configureClient
     .WithEndpoint(builder.Configuration["MinIO:Endpoint"])

@@ -24,11 +24,11 @@ namespace PatientService.API.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAllPatients()
+        public async Task<IActionResult> GetAllPatients([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
         {
             try
             {
-                var patients = await _patientRepository.GetAllPatientsAsync();
+                var patients = await _patientRepository.GetAllPatientsAsync(page, pageSize);
                 return Ok(patients);
             }
             catch (Exception ex)

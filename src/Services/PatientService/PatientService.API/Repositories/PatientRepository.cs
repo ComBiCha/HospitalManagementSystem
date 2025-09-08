@@ -42,19 +42,13 @@ namespace PatientService.API.Repositories
             }
         }
 
-        public async Task<IEnumerable<Patient>> GetAllPatientsAsync()
+        public async Task<IEnumerable<Patient>> GetAllPatientsAsync(int page = 1, int pageSize = 50)
         {
-            try
-            {
-                return await _context.Patients
-                    .OrderBy(p => p.Name)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error getting all patients");
-                throw;
-            }
+            return await _context.Patients
+                .OrderBy(p => p.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
         }
 
         public async Task<IEnumerable<Patient>> GetPatientsByNameAsync(string name)
