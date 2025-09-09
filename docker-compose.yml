@@ -1,17 +1,16 @@
 services:
-  # PostgreSQL for Patient Service
-  patient-postgres:
+
+  central-postgres:
     image: postgres:15
-    container_name: hms-patient-postgres
+    container_name: hms-central-postgres
     environment:
-      POSTGRES_DB: HMS_PatientDB
+      POSTGRES_DB: HMS_CentralDB
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres123
     ports:
       - "5432:5432"
     volumes:
-      - patient_postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
+      - central_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -19,48 +18,69 @@ services:
       retries: 5
     networks:
       - hms-network
+
+  # PostgreSQL for Patient Service
+  # patient-postgres:
+  #   image: postgres:15
+  #   container_name: hms-patient-postgres
+  #   environment:
+  #     POSTGRES_DB: HMS_PatientDB
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres123
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - patient_postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - hms-network
 
   # PostgreSQL for Doctor Service  
-  doctor-postgres:
-    image: postgres:15
-    container_name: hms-doctor-postgres
-    environment:
-      POSTGRES_DB: HMS_DoctorDB
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5433:5432"
-    volumes:
-      - doctor_postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - hms-network
+  # doctor-postgres:
+  #   image: postgres:15
+  #   container_name: hms-doctor-postgres
+  #   environment:
+  #     POSTGRES_DB: HMS_DoctorDB
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres123
+  #   ports:
+  #     - "5433:5432"
+  #   volumes:
+  #     - doctor_postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - hms-network
 
   # PostgreSQL for Appointment Service
-  appointment-postgres:
-    image: postgres:15
-    container_name: hms-appointment-postgres
-    environment:
-      POSTGRES_DB: HMS_AppointmentDB
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5434:5432"
-    volumes:
-      - appointment_postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - hms-network
+  # appointment-postgres:
+  #   image: postgres:15
+  #   container_name: hms-appointment-postgres
+  #   environment:
+  #     POSTGRES_DB: HMS_AppointmentDB
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres123
+  #   ports:
+  #     - "5434:5432"
+  #   volumes:
+  #     - appointment_postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - hms-network
 
   # PostgreSQL for Billing Service
   billing-postgres:
@@ -80,6 +100,63 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - hms-network
+    
+  hms-api:
+    build:
+      context: .
+      dockerfile: HospitalManagementSystem.API/Dockerfile
+    container_name: hms-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Host=central-postgres;Database=HMS_CentralDB;Username=postgres;Password=postgres123;Port=5432
+      - ConnectionStrings__Redis=redis:6379,password=redis123
+      - Redis__Password=redis123
+      - SeaweedFS__MasterUrl=http://seaweed-master:9333
+      - SeaweedFS__PublicUrl=http://seaweed-filer:8888
+      - SeaweedFS__Replication=000
+      - RabbitMQ__HostName=rabbitmq
+      - RabbitMQ__Port=5672
+      - RabbitMQ__UserName=guest
+      - RabbitMQ__Password=guest
+      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+      - Jwt__Issuer=HMS.AuthService
+      - Jwt__Audience=HMS.Services
+      # Email settings
+      - Email__SmtpServer=smtp.gmail.com
+      - Email__SmtpPort=587
+      - Email__Username=sangrk2004@gmail.com
+      - Email__Password=elhl wqmk qnva rwbj
+      - Email__FromEmail=sangrk2004@gmail.com
+      - Email__FromName=Hospital Management System
+      - Email__EnableSsl=true
+      - Email__UseDefaultCredentials=false
+      # SMS settings (Twilio example)
+      - SMS__AccountSid=your-twilio-sid
+      - SMS__AuthToken=your-twilio-token
+      - SMS__FromNumber=+1234567890
+      # Push notification settings (Firebase)
+      - Push__ServerKey=your-firebase-server-key
+      - Push__SenderId=your-firebase-sender-id
+      # Notification settings
+      - Notification__RetryAttempts=3
+      - Notification__RetryDelayMinutes=5
+    ports:
+      - "7700:80"
+    depends_on:
+      central-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
     networks:
       - hms-network
 
@@ -143,32 +220,32 @@ services:
     networks:
       - hms-network
 
-  api-gateway:
-    build:
-      context: .
-      dockerfile: src/ApiGateway/HMS.ApiGateway/Dockerfile
-    container_name: hms-api-gateway
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80
-      # Service endpoints for routing
-      - Services__PatientService__BaseUrl=http://patient-service:80
-      - Services__DoctorService__BaseUrl=http://doctor-service:80
-      - Services__BillingService__BaseUrl=http://billing-service:80
-      - Services__NotificationService__BaseUrl=http://notification-service:80
-      - Services__ImageService__BaseUrl=http://image-service:80
-    ports:
-      - "5000:80"   # Main entry point
-    depends_on:
-      patient-service:
-        condition: service_healthy
-      doctor-service:
-        condition: service_healthy
-      billing-service:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - hms-network
+  # api-gateway:
+  #   build:
+  #     context: .
+  #     dockerfile: src/ApiGateway/HMS.ApiGateway/Dockerfile
+  #   container_name: hms-api-gateway
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Development
+  #     - ASPNETCORE_URLS=http://+:80
+  #     # Service endpoints for routing
+  #     - Services__PatientService__BaseUrl=http://patient-service:80
+  #     - Services__DoctorService__BaseUrl=http://doctor-service:80
+  #     - Services__BillingService__BaseUrl=http://billing-service:80
+  #     - Services__NotificationService__BaseUrl=http://notification-service:80
+  #     - Services__ImageService__BaseUrl=http://image-service:80
+  #   ports:
+  #     - "5000:80"   # Main entry point
+  #   depends_on:
+  #     patient-service:
+  #       condition: service_healthy
+  #     doctor-service:
+  #       condition: service_healthy
+  #     billing-service:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   networks:
+  #     - hms-network
 
   # Notification Service API (Đã được di chuyển ra ngoài)
   notification-service:
@@ -218,25 +295,25 @@ services:
       - hms-network
 
   # PostgreSQL for Authentication Service  
-  auth-postgres:
-    image: postgres:15
-    container_name: hms-auth-postgres
-    environment:
-      POSTGRES_DB: HMS_AuthDB
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5436:5432"
-    volumes:
-      - auth_postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - hms-network
+  # auth-postgres:
+  #   image: postgres:15
+  #   container_name: hms-auth-postgres
+  #   environment:
+  #     POSTGRES_DB: HMS_AuthDB
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres123
+  #   ports:
+  #     - "5436:5432"
+  #   volumes:
+  #     - auth_postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - hms-network
 
   # BillingService API
   billing-service:
@@ -276,47 +353,47 @@ services:
       - hms-network
 
   # PostgreSQL for Image Service
-  image-postgres:
-    image: postgres:15
-    container_name: hms-image-postgres
-    environment:
-      POSTGRES_DB: HMS_ImageDB
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5438:5432"
-    volumes:
-      - image_postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - hms-network
+  # image-postgres:
+  #   image: postgres:15
+  #   container_name: hms-image-postgres
+  #   environment:
+  #     POSTGRES_DB: HMS_ImageDB
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres123
+  #   ports:
+  #     - "5438:5432"
+  #   volumes:
+  #     - image_postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - hms-network
 
   # MinIO Object Storage
-  minio:
-    image: minio/minio:latest
-    container_name: hms-minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    volumes:
-      - minio_data:/data
-    command: server /data --console-address ":9001"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-    networks:
-      - hms-network
+  # minio:
+  #   image: minio/minio:latest
+  #   container_name: hms-minio
+  #   ports:
+  #     - "9000:9000"
+  #     - "9001:9001"
+  #   environment:
+  #     MINIO_ROOT_USER: minioadmin
+  #     MINIO_ROOT_PASSWORD: minioadmin
+  #   volumes:
+  #     - minio_data:/data
+  #   command: server /data --console-address ":9001"
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+  #     interval: 30s
+  #     timeout: 20s
+  #     retries: 3
+  #   networks:
+  #     - hms-network
 
   seaweed-master:
     image: chrislusf/seaweedfs:latest
@@ -360,111 +437,113 @@ services:
       - hms-network
 
   # Image Service API
-  image-service:
-    build:
-      context: .
-      dockerfile: src/Services/ImageService/ImageService.API/Dockerfile
-    container_name: hms-image-service
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Host=image-postgres;Port=5432;Database=HMS_ImageDB;Username=postgres;Password=postgres123
-      - SeaweedFS__MasterUrl=http://seaweed-master:9333
-      - SeaweedFS__PublicUrl=http://seaweed-filer:8888
-      - SeaweedFS__Replication=001
-      - MinIO__Endpoint=minio:9000
-      - MinIO__AccessKey=minioadmin
-      - MinIO__SecretKey=minioadmin
-      - MinIO__BucketName=medical-images
-      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
-      - Jwt__Issuer=HMS.AuthService
-      - Jwt__Audience=HMS.Services
-    ports:
-      - "7005:80"
-    depends_on:
-      image-postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      seaweed-filer:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - hms-network
+  # image-service:
+  #   build:
+  #     context: .
+  #     dockerfile: src/Services/ImageService/ImageService.API/Dockerfile
+  #   container_name: hms-image-service
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Development
+  #     - ASPNETCORE_URLS=http://+:80
+  #     - ConnectionStrings__DefaultConnection=Host=image-postgres;Port=5432;Database=HMS_ImageDB;Username=postgres;Password=postgres123
+  #     - SeaweedFS__MasterUrl=http://seaweed-master:9333
+  #     - SeaweedFS__PublicUrl=http://seaweed-filer:8888
+  #     - SeaweedFS__Replication=001
+  #     - MinIO__Endpoint=minio:9000
+  #     - MinIO__AccessKey=minioadmin
+  #     - MinIO__SecretKey=minioadmin
+  #     - MinIO__BucketName=medical-images
+  #     - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+  #     - Jwt__Issuer=HMS.AuthService
+  #     - Jwt__Audience=HMS.Services
+  #   ports:
+  #     - "7005:80"
+  #   depends_on:
+  #     image-postgres:
+  #       condition: service_healthy
+  #     minio:
+  #       condition: service_healthy
+  #     seaweed-filer:
+  #       condition: service_started
+  #   restart: unless-stopped
+  #   networks:
+  #     - hms-network
 
   # ==================== ADD MISSING APPLICATION SERVICES ====================
   
   # Patient Service API
-  patient-service:
-    build:
-      context: .
-      dockerfile: src/Services/PatientService/PatientService.API/Dockerfile
-    container_name: hms-patient-service
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production  # Change from Docker to Production
-      - ASPNETCORE_URLS=http://+:80        # Force HTTP only
-      - ASPNETCORE_HTTPS_PORT=             # Explicitly disable HTTPS port
-      - DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2UNENCRYPTEDSUPPORT=true
-      - ConnectionStrings__DefaultConnection=Host=patient-postgres;Port=5432;Database=HMS_PatientDB;Username=postgres;Password=postgres123
-      - ConnectionStrings__Redis=redis:6379,password=redis123
-      - Redis__Password=redis123
-    ports:
-      - "7100:80"
-    depends_on:
-      patient-postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 15s
-      retries: 5
-      start_period: 60s
-    networks:
-      - hms-network
+  # patient-service:
+  #   build:
+  #     context: .
+  #     dockerfile: src/Services/PatientService/PatientService.API/Dockerfile
+  #   container_name: hms-patient-service
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Production  # Change from Docker to Production
+  #     - ASPNETCORE_URLS=http://+:80        # Force HTTP only
+  #     - ASPNETCORE_HTTPS_PORT=             # Explicitly disable HTTPS port
+  #     - DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2UNENCRYPTEDSUPPORT=true
+  #     - ConnectionStrings__DefaultConnection=Host=central-postgres;Database=HMS_CentralDB;Username=postgres;Password=postgres123;Port=5432
+  #     - ConnectionStrings__Redis=redis:6379,password=redis123
+  #     - Redis__Password=redis123
+  #   ports:
+  #     - "7100:80"
+  #   depends_on:
+  #     central-postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost/health"]
+  #     interval: 30s
+  #     timeout: 15s
+  #     retries: 5
+  #     start_period: 60s
+  #   networks:
+  #     - hms-network
 
 
 
   # Doctor Service API  
-  doctor-service:
-    build:
-      context: .
-      dockerfile: src/Services/DoctorService/DoctorService.API/Dockerfile
-    container_name: hms-doctor-service
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ASPNETCORE_URLS=http://+:80                     # Force HTTP only
-      - ASPNETCORE_HTTPS_PORT=                          # Disable HTTPS port                                  # Empty HTTPS port
-      - DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2UNENCRYPTEDSUPPORT=true
-      # Database
-      - ConnectionStrings__DefaultConnection=Host=doctor-postgres;Port=5432;Database=HMS_DoctorDB;Username=postgres;Password=postgres123
-      # JWT settings
-      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
-      - Jwt__Issuer=HMS.AuthService
-      - Jwt__Audience=HMS.Services
-      # gRPC settings for calling Patient Service
-      - PatientService__GrpcEndpoint=http://patient-service:80
-    ports:
-      - "7200:80"
-    depends_on:
-      doctor-postgres:
-        condition: service_healthy
-      patient-service:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 15s
-      retries: 5
-      start_period: 60s
-    networks:
-      - hms-network
+  # doctor-service:
+  #   build:
+  #     context: .
+  #     dockerfile: src/Services/DoctorService/DoctorService.API/Dockerfile
+  #   container_name: hms-doctor-service
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Production
+  #     - ASPNETCORE_URLS=http://+:80                     # Force HTTP only
+  #     - ASPNETCORE_HTTPS_PORT=                          # Disable HTTPS port                                  # Empty HTTPS port
+  #     - DOTNET_SYSTEM_NET_HTTP_SOCKETSHTTPHANDLER_HTTP2UNENCRYPTEDSUPPORT=true
+  #     # Database
+  #     - ConnectionStrings__DefaultConnection=Host=doctor-postgres;Port=5432;Database=HMS_DoctorDB;Username=postgres;Password=postgres123
+  #     # JWT settings
+  #     - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+  #     - Jwt__Issuer=HMS.AuthService
+  #     - Jwt__Audience=HMS.Services
+  #     # gRPC settings for calling Patient Service
+  #     - PatientService__GrpcEndpoint=http://patient-service:80
+  #   ports:
+  #     - "7200:80"
+  #   depends_on:
+  #     doctor-postgres:
+  #       condition: service_healthy
+  #     patient-service:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost/health"]
+  #     interval: 30s
+  #     timeout: 15s
+  #     retries: 5
+  #     start_period: 60s
+  #   networks:
+  #     - hms-network
 
 # Docker volumes - data được lưu persistent ngay cả khi container bị xóa
 volumes:
+  central_postgres_data:
+    driver: local
   patient_postgres_data:
     driver: local
   doctor_postgres_data:

@@ -24,4 +24,10 @@
     <Protobuf Include="Protos\patient.proto" GrpcServices="Server" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\PatientService.Domain\PatientService.Domain.csproj" />
+    <ProjectReference Include="..\PatientService.Application\PatientService.Application.csproj" />
+    <ProjectReference Include="..\PatientService.Infrastructure\PatientService.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>

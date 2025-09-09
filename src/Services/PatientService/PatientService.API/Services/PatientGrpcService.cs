@@ -1,7 +1,10 @@
 using Grpc.Core;
 using PatientService.API.Grpc;
-using PatientService.API.Models;
-using PatientService.API.Repositories;
+using PatientService.Domain.Entities;
+using PatientService.Domain.Repositories;
+using PatientService.Infrastructure.Caching;
+using PatientService.Infrastructure.Persistence;
+using PatientService.Application.Services;
 using Google.Protobuf.WellKnownTypes;
 
 namespace PatientService.API.Services

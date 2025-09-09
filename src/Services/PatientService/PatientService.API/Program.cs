@@ -1,8 +1,9 @@
 using Microsoft.EntityFrameworkCore;
-using PatientService.API.Data;
+using PatientService.Infrastructure.Persistence;
+using PatientService.Infrastructure.Caching;
 using PatientService.API.Services;
-using PatientService.API.Services.Caching;
-using PatientService.API.Repositories;
+using PatientService.Application.Services;
+using PatientService.Domain.Repositories;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);

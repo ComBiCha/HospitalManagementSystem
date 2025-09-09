@@ -4,3 +4,47 @@
 06:21:31.241187 version@stat F·[] S·0B[] Sc·[]
 06:21:31.242712 db@janitor F·2 G·0
 06:21:31.242802 db@open done T·2.076917ms
+10:03:05.989256 db@close closing
+10:03:05.989833 db@close done T·576.917µs
+=============== Sep 9, 2025 (UTC) ===============
+00:56:34.758051 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+00:56:34.758535 version@stat F·[] S·0B[] Sc·[]
+00:56:34.758580 db@open opening
+00:56:34.758730 journal@recovery F·1
+00:56:34.758796 journal@recovery recovering @1
+00:56:34.759064 version@stat F·[] S·0B[] Sc·[]
+00:56:34.760146 db@janitor F·2 G·0
+00:56:34.760173 db@open done T·1.570667ms
+06:56:40.483837 db@close closing
+06:56:40.484251 db@close done T·413.834µs
+=============== Sep 9, 2025 (UTC) ===============
+07:01:08.664681 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+07:01:08.665740 version@stat F·[] S·0B[] Sc·[]
+07:01:08.665835 db@open opening
+07:01:08.666078 journal@recovery F·1
+07:01:08.666197 journal@recovery recovering @2
+07:01:08.666573 version@stat F·[] S·0B[] Sc·[]
+07:01:08.668338 db@janitor F·2 G·0
+07:01:08.668389 db@open done T·2.517125ms
+07:03:45.625236 db@close closing
+07:03:45.626348 db@close done T·1.111667ms
+=============== Sep 9, 2025 (UTC) ===============
+07:04:07.087254 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+07:04:07.088176 version@stat F·[] S·0B[] Sc·[]
+07:04:07.088260 db@open opening
+07:04:07.088489 journal@recovery F·1
+07:04:07.088601 journal@recovery recovering @4
+07:04:07.089490 version@stat F·[] S·0B[] Sc·[]
+07:04:07.091479 db@janitor F·2 G·0
+07:04:07.091536 db@open done T·3.239583ms
+07:11:41.727215 db@close closing
+07:11:41.728145 db@close done T·885.666µs
+=============== Sep 9, 2025 (UTC) ===============
+07:12:28.747291 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+07:12:28.748218 version@stat F·[] S·0B[] Sc·[]
+07:12:28.748319 db@open opening
+07:12:28.748582 journal@recovery F·1
+07:12:28.748730 journal@recovery recovering @6
+07:12:28.749204 version@stat F·[] S·0B[] Sc·[]
+07:12:28.751608 db@janitor F·2 G·0
+07:12:28.751655 db@open done T·3.2885ms

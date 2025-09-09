@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
-using PatientService.API.Models;
-using PatientService.API.Repositories;
-using PatientService.API.Services.Caching;
+using PatientService.Domain.Entities;
+using PatientService.Domain.Repositories;
+using PatientService.Infrastructure.Caching;
+using PatientService.Infrastructure.Persistence;
+using PatientService.Application.Services;
 
 namespace PatientService.API.Controllers
 {
