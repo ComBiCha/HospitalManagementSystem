@@ -1,4 +1,4 @@
-using HospitalManagementSystem.Domain.Repositories;
+using HospitalManagementSystem.Domain.Notifications;
 using Microsoft.Extensions.Logging;
 
 namespace HospitalManagementSystem.Application.Services

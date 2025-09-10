@@ -6,8 +6,9 @@ using HospitalManagementSystem.Domain.Entities;
 using HospitalManagementSystem.Domain.Repositories;
 using HospitalManagementSystem.Infrastructure.Caching;
 using HospitalManagementSystem.Infrastructure.Persistence;
-using HospitalManagementSystem.Infrastructure.RabbitMQ;
+using HospitalManagementSystem.Domain.RabbitMQ;
 using HospitalManagementSystem.Application.Services;
+using HospitalManagementSystem.Domain.Events;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -262,7 +263,7 @@ namespace HospitalManagementSystem.API.Controllers
 
                 var createdAppointment = await _appointmentRepository.CreateAsync(appointment);
 
-                await _rabbitMQService.PublishAppointmentCreatedAsync(new
+                await _rabbitMQService.PublishAppointmentCreatedAsync(new AppointmentCreatedEvent
                 {
                     AppointmentId = createdAppointment.Id,
                     PatientId = createdAppointment.PatientId,
@@ -365,7 +366,7 @@ namespace HospitalManagementSystem.API.Controllers
                     return NotFound($"Appointment with ID {id} not found");
                 }
 
-                await _rabbitMQService.PublishAppointmentUpdatedAsync(new
+                await _rabbitMQService.PublishAppointmentUpdatedAsync(new AppointmentUpdatedEvent
                 {
                     AppointmentId = updatedAppointment.Id,
                     PatientId = updatedAppointment.PatientId,
@@ -415,10 +416,24 @@ namespace HospitalManagementSystem.API.Controllers
                     return NotFound($"Appointment with ID {id} not found");
                 }
 
+
                 // ✅ Role-based access control
                 if (!await CanAccessAppointment(appointment, currentUserId, currentUserRole))
                 {
                     return Forbid("You don't have permission to cancel this appointment");
+                }
+
+                var patient = await _patientRepository.GetPatientByIdAsync(appointment.PatientId);
+                if (patient == null)
+                {
+                    return NotFound($"Patient with ID {appointment.PatientId} not found");
+                }
+
+                // Validate doctor exists
+                var doctor = await _doctorRepository.GetByIdAsync(appointment.DoctorId);
+                if (doctor == null)
+                {
+                    return NotFound($"Doctor with ID {appointment.DoctorId} not found");
                 }
 
                 var deleted = await _appointmentRepository.DeleteAsync(id);
@@ -427,12 +442,14 @@ namespace HospitalManagementSystem.API.Controllers
                     return NotFound($"Appointment with ID {id} not found");
                 }
 
-                // ✅ Publish event to RabbitMQ with user context
-                await _rabbitMQService.PublishAppointmentCancelledAsync(new
+                await _rabbitMQService.PublishAppointmentCancelledAsync(new AppointmentCancelledEvent
                 {
                     AppointmentId = appointment.Id,
                     PatientId = appointment.PatientId,
+                    PatientName = patient?.Name ?? "",
                     DoctorId = appointment.DoctorId,
+                    DoctorName = doctor?.Name ?? "",
+                    DoctorSpecialty = doctor?.Specialty ?? "",
                     Date = appointment.Date,
                     Status = "Cancelled",
                     CancelledAt = DateTime.UtcNow,

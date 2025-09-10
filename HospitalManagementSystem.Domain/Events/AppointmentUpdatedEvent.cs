@@ -11,5 +11,7 @@ namespace HospitalManagementSystem.Domain.Events
         public DateTime Date { get; set; }
         public string Status { get; set; } = string.Empty;
         public DateTime UpdatedAt { get; set; }
+        public int UpdatedByUserId { get; set; } 
+        public string UpdatedByRole { get; set; } = string.Empty;
     }
 }

@@ -1,6 +1,6 @@
 using System.Net.Mail;
 using System.Net;
-using HospitalManagementSystem.Domain.Repositories;
+using HospitalManagementSystem.Domain.Notifications;
 
 namespace HospitalManagementSystem.Infrastructure.Channels
 {

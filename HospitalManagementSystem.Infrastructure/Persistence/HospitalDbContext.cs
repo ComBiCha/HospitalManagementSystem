@@ -12,7 +12,7 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
         public DbSet<Patient> Patients { get; set; }
         public DbSet<Doctor> Doctors { get; set; }
         public DbSet<Appointment> Appointments { get; set; }
-        // public DbSet<Billing> Billings { get; set; }
+        public DbSet<Billing> Billings { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<ImageInfo> Images { get; set; }
@@ -158,6 +158,17 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 entity.HasIndex(e => e.DoctorId);
                 entity.HasIndex(e => e.Date);
                 entity.HasIndex(e => e.Status);
+            });
+
+            modelBuilder.Entity<Billing>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Amount).HasPrecision(18, 2);
+                entity.Property(e => e.PaymentMethod).IsRequired();
+                entity.Property(e => e.Status).IsRequired();
+                entity.HasIndex(e => e.AppointmentId);
+                entity.HasIndex(e => e.PatientId);
+                entity.HasIndex(e => e.TransactionId);
             });
 
             // Seed default users

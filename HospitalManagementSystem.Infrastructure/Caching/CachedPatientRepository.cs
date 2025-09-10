@@ -1,6 +1,6 @@
 using HospitalManagementSystem.Domain.Entities;
 using HospitalManagementSystem.Domain.Repositories;
-using HospitalManagementSystem.Infrastructure.Caching;
+using HospitalManagementSystem.Domain.Caching;
 using HospitalManagementSystem.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging;
 

@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using HospitalManagementSystem.Domain.Entities;
+using HospitalManagementSystem.Domain.Notifications;
 using HospitalManagementSystem.Domain.Repositories;
 using HospitalManagementSystem.Infrastructure.Caching;
 using HospitalManagementSystem.Infrastructure.Persistence;

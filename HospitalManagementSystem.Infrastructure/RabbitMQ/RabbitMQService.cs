@@ -1,11 +1,10 @@
 using RabbitMQ.Client;
-using Newtonsoft.Json;
 using System.Text;
-using Microsoft.Extensions.Hosting;
+using System.Text.Json;
+using HospitalManagementSystem.Domain.Events;
+using HospitalManagementSystem.Domain.RabbitMQ;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
-
-
 
 namespace HospitalManagementSystem.Infrastructure.RabbitMQ
 {
@@ -14,61 +13,58 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
         private readonly IConnection _connection;
         private readonly IModel _channel;
         private readonly ILogger<RabbitMQService> _logger;
-        private readonly string _exchangeName = "hospital.events";
+        private readonly string _hospitalExchange;
+        private readonly string _billingExchange;
 
         public RabbitMQService(ILogger<RabbitMQService> logger, IConfiguration configuration)
         {
             _logger = logger;
-            
-            try
+            var factory = new ConnectionFactory()
             {
-                var factory = new ConnectionFactory()
-                {
-                    HostName = configuration.GetValue<string>("RabbitMQ:HostName") ?? "localhost",
-                    Port = configuration.GetValue<int>("RabbitMQ:Port", 5672),
-                    UserName = configuration.GetValue<string>("RabbitMQ:UserName") ?? "guest",
-                    Password = configuration.GetValue<string>("RabbitMQ:Password") ?? "guest"
-                };
+                HostName = configuration["RabbitMQ:HostName"] ?? "localhost",
+                Port = int.Parse(configuration["RabbitMQ:Port"] ?? "5672"),
+                UserName = configuration["RabbitMQ:UserName"] ?? "guest",
+                Password = configuration["RabbitMQ:Password"] ?? "guest"
+            };
 
-                _connection = factory.CreateConnection();
-                _channel = _connection.CreateModel();
+            _connection = factory.CreateConnection();
+            _channel = _connection.CreateModel();
 
-                // Declare exchange
-                _channel.ExchangeDeclare(
-                    exchange: _exchangeName,
-                    type: ExchangeType.Topic,
-                    durable: true,
-                    autoDelete: false);
+            _hospitalExchange = configuration["RabbitMQ:HospitalExchange"] ?? "hospital.events";
+            _billingExchange = configuration["RabbitMQ:BillingExchange"] ?? "billing.events";
 
-                _logger.LogInformation("RabbitMQ connection established successfully");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to connect to RabbitMQ");
-                throw;
-            }
+            _channel.ExchangeDeclare(_hospitalExchange, ExchangeType.Topic, durable: true, autoDelete: false);
+            _channel.ExchangeDeclare(_billingExchange, ExchangeType.Topic, durable: true, autoDelete: false);
         }
 
-        public async Task PublishAppointmentCreatedAsync(object appointmentData)
-        {
-            await PublishEventAsync("appointment.created", appointmentData);
-        }
+        // Appointment events
+        public async Task PublishAppointmentCreatedAsync(AppointmentCreatedEvent appointmentData)
+            => await PublishEventAsync(_hospitalExchange, "appointment.created", appointmentData);
 
-        public async Task PublishAppointmentUpdatedAsync(object appointmentData)
-        {
-            await PublishEventAsync("appointment.updated", appointmentData);
-        }
+        public async Task PublishAppointmentUpdatedAsync(AppointmentUpdatedEvent appointmentData)
+            => await PublishEventAsync(_hospitalExchange, "appointment.updated", appointmentData);
 
-        public async Task PublishAppointmentCancelledAsync(object appointmentData)
-        {
-            await PublishEventAsync("appointment.cancelled", appointmentData);
-        }
+        public async Task PublishAppointmentCancelledAsync(AppointmentCancelledEvent appointmentData)
+            => await PublishEventAsync(_hospitalExchange, "appointment.cancelled", appointmentData);
 
-        private async Task PublishEventAsync(string routingKey, object data)
+        // Billing events
+        public async Task PublishPaymentInitiatedAsync(PaymentInitiatedEvent paymentData)
+            => await PublishEventAsync(_billingExchange, "payment.initiated", paymentData);
+
+        public async Task PublishPaymentProcessedAsync(PaymentProcessedEvent paymentData)
+            => await PublishEventAsync(_billingExchange, "payment.processed", paymentData);
+
+        public async Task PublishPaymentFailedAsync(PaymentFailedEvent paymentData)
+            => await PublishEventAsync(_billingExchange, "payment.failed", paymentData);
+
+        public async Task PublishRefundProcessedAsync(RefundProcessedEvent refundData)
+            => await PublishEventAsync(_billingExchange, "refund.processed", refundData);
+
+        private async Task PublishEventAsync(string exchange, string routingKey, object data)
         {
             try
             {
-                var message = JsonConvert.SerializeObject(data);
+                var message = JsonSerializer.Serialize(data);
                 var body = Encoding.UTF8.GetBytes(message);
 
                 var properties = _channel.CreateBasicProperties();
@@ -77,18 +73,17 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
                 properties.MessageId = Guid.NewGuid().ToString();
 
                 _channel.BasicPublish(
-                    exchange: _exchangeName,
+                    exchange: exchange,
                     routingKey: routingKey,
                     basicProperties: properties,
                     body: body);
 
-                _logger.LogInformation("Published event {RoutingKey} with message: {Message}", routingKey, message);
-                
+                _logger.LogInformation("Published event {RoutingKey} to {Exchange}: {Message}", routingKey, exchange, message);
                 await Task.CompletedTask;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to publish event {RoutingKey}", routingKey);
+                _logger.LogError(ex, "Error publishing event {RoutingKey} to {Exchange}", routingKey, exchange);
                 throw;
             }
         }

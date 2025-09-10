@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using HospitalManagementSystem.Domain.Entities;
 using HospitalManagementSystem.Domain.Repositories;
 using HospitalManagementSystem.Infrastructure.Caching;
-using HospitalManagementSystem.Infrastructure.Persistence;
+using HospitalManagementSystem.Domain.Caching;
 using HospitalManagementSystem.Application.Services;
 
 namespace HospitalManagementSystem.API.Controllers

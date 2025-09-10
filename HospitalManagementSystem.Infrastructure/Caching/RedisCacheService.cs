@@ -1,6 +1,7 @@
 using StackExchange.Redis;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using HospitalManagementSystem.Domain.Caching;
 
 namespace HospitalManagementSystem.Infrastructure.Caching
 {

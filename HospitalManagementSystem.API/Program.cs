@@ -3,13 +3,24 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using HospitalManagementSystem.Infrastructure.Persistence;
+using HospitalManagementSystem.Infrastructure.Repositories;
 using HospitalManagementSystem.Infrastructure.Caching;
 using HospitalManagementSystem.Infrastructure.Storage;
 using HospitalManagementSystem.Infrastructure.RabbitMQ;
 using HospitalManagementSystem.Infrastructure.Channels;
+using HospitalManagementSystem.Infrastructure.PaymentFactory;
+using HospitalManagementSystem.Infrastructure.PaymentMethods;
+using HospitalManagementSystem.Infrastructure.BillingStrategies;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.API.Services;
 using HospitalManagementSystem.Domain.Repositories;
+using HospitalManagementSystem.Domain.Strategies;
+using HospitalManagementSystem.Domain.Caching;
+using HospitalManagementSystem.Domain.Payments;
+using HospitalManagementSystem.Domain.Factories;
+using HospitalManagementSystem.Domain.RabbitMQ;
+using HospitalManagementSystem.Domain.Storages;
+using HospitalManagementSystem.Domain.Notifications;
 using StackExchange.Redis;
 using Microsoft.OpenApi.Models;
 
@@ -41,6 +52,7 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IDoctorRepository, DoctorRepository>();
 builder.Services.AddHttpClient<IStorageService, SeaweedStorageService>();
 builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+builder.Services.AddScoped<IBillingRepository, BillingRepository>();
 
 builder.Services.AddHostedService<RabbitMQConsumerService>();
 
@@ -123,6 +135,12 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]))
     };
 });
+
+builder.Services.AddScoped<StripePaymentMethod>();
+builder.Services.AddScoped<CashPaymentMethod>();
+builder.Services.AddScoped<IPaymentFactory, PaymentFactory>();
+builder.Services.AddScoped<IBillingStrategyFactory, BillingStrategyFactory>();
+builder.Services.AddScoped<InsuranceBillingStrategy>();
 
 var app = builder.Build();
 

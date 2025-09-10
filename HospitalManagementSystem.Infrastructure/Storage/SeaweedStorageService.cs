@@ -2,7 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using HospitalManagementSystem.Domain.Repositories;
+using HospitalManagementSystem.Domain.Storages;
 
 namespace HospitalManagementSystem.Infrastructure.Storage
 {

@@ -83,25 +83,25 @@ services:
   #     - hms-network
 
   # PostgreSQL for Billing Service
-  billing-postgres:
-    image: postgres:15
-    container_name: hms-billing-postgres
-    environment:
-      POSTGRES_DB: HMS_BillingDB
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5437:5432"
-    volumes:
-      - billing_postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - hms-network
+  # billing-postgres:
+  #   image: postgres:15
+  #   container_name: hms-billing-postgres
+  #   environment:
+  #     POSTGRES_DB: HMS_BillingDB
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres123
+  #   ports:
+  #     - "5437:5432"
+  #   volumes:
+  #     - billing_postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - hms-network
     
   hms-api:
     build:
@@ -143,6 +143,8 @@ services:
       # Notification settings
       - Notification__RetryAttempts=3
       - Notification__RetryDelayMinutes=5
+      - Stripe__PublishableKey=pk_test_51S3UfIFkuPFy3lADPYhc1vpWmvExBWlcmlsoommBJlR8041rkardUtKcXxqLcthA7lLiBGEfAYNUegDVsjrSTbLJ00QGFjJ1Rd
+      - Stripe__SecretKey=sk_test_51S3UfIFkuPFy3lADlMZ0av334rGaElnrKh6PkDdylwPt7mhIy0vhmmL57UeWost5JGO5henRFdP60RnXZ8t7k7dn00qgeu5lPx
     ports:
       - "7700:80"
     depends_on:
@@ -248,51 +250,51 @@ services:
   #     - hms-network
 
   # Notification Service API (Đã được di chuyển ra ngoài)
-  notification-service:
-    build:
-      context: .
-      dockerfile: src/Services/NotificationService/NotificationService.API/Dockerfile
-    container_name: hms-notification-service
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Host=notification-postgres;Port=5432;Database=HMS_NotificationDB;Username=postgres;Password=postgres123
-      - RabbitMQ__HostName=rabbitmq
-      - RabbitMQ__Port=5672
-      - RabbitMQ__UserName=guest
-      - RabbitMQ__Password=guest
-      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
-      - Jwt__Issuer=HMS.AuthService
-      - Jwt__Audience=HMS.Services
-      # Email settings
-      - Email__SmtpServer=smtp.gmail.com
-      - Email__SmtpPort=587
-      - Email__Username=sangrk2004@gmail.com
-      - Email__Password=elhl wqmk qnva rwbj
-      - Email__FromEmail=sangrk2004@gmail.com
-      - Email__FromName=Hospital Management System
-      - Email__EnableSsl=true
-      - Email__UseDefaultCredentials=false
-      # SMS settings (Twilio example)
-      - SMS__AccountSid=your-twilio-sid
-      - SMS__AuthToken=your-twilio-token
-      - SMS__FromNumber=+1234567890
-      # Push notification settings (Firebase)
-      - Push__ServerKey=your-firebase-server-key
-      - Push__SenderId=your-firebase-sender-id
-      # Notification settings
-      - Notification__RetryAttempts=3
-      - Notification__RetryDelayMinutes=5
-    ports:
-      - "7003:80"
-    depends_on:
-      notification-postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - hms-network
+  # notification-service:
+  #   build:
+  #     context: .
+  #     dockerfile: src/Services/NotificationService/NotificationService.API/Dockerfile
+  #   container_name: hms-notification-service
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Development
+  #     - ASPNETCORE_URLS=http://+:80
+  #     - ConnectionStrings__DefaultConnection=Host=notification-postgres;Port=5432;Database=HMS_NotificationDB;Username=postgres;Password=postgres123
+  #     - RabbitMQ__HostName=rabbitmq
+  #     - RabbitMQ__Port=5672
+  #     - RabbitMQ__UserName=guest
+  #     - RabbitMQ__Password=guest
+  #     - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+  #     - Jwt__Issuer=HMS.AuthService
+  #     - Jwt__Audience=HMS.Services
+  #     # Email settings
+  #     - Email__SmtpServer=smtp.gmail.com
+  #     - Email__SmtpPort=587
+  #     - Email__Username=sangrk2004@gmail.com
+  #     - Email__Password=elhl wqmk qnva rwbj
+  #     - Email__FromEmail=sangrk2004@gmail.com
+  #     - Email__FromName=Hospital Management System
+  #     - Email__EnableSsl=true
+  #     - Email__UseDefaultCredentials=false
+  #     # SMS settings (Twilio example)
+  #     - SMS__AccountSid=your-twilio-sid
+  #     - SMS__AuthToken=your-twilio-token
+  #     - SMS__FromNumber=+1234567890
+  #     # Push notification settings (Firebase)
+  #     - Push__ServerKey=your-firebase-server-key
+  #     - Push__SenderId=your-firebase-sender-id
+  #     # Notification settings
+  #     - Notification__RetryAttempts=3
+  #     - Notification__RetryDelayMinutes=5
+  #   ports:
+  #     - "7003:80"
+  #   depends_on:
+  #     notification-postgres:
+  #       condition: service_healthy
+  #     rabbitmq:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   networks:
+  #     - hms-network
 
   # PostgreSQL for Authentication Service  
   # auth-postgres:
@@ -316,41 +318,41 @@ services:
   #     - hms-network
 
   # BillingService API
-  billing-service:
-    build:
-      context: .
-      dockerfile: src/Services/BillingService/BillingService.API/Dockerfile
-    container_name: hms-billing-service
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Host=billing-postgres;Port=5432;Database=HMS_BillingDB;Username=postgres;Password=postgres123
-      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
-      - Jwt__Issuer=HMS.AuthService
-      - Jwt__Audience=HMS.Services
-      - Jwt__ExpiryMinutes=60
-      - RabbitMQ__HostName=rabbitmq
-      - RabbitMQ__Port=5672
-      - RabbitMQ__UserName=guest
-      - RabbitMQ__Password=guest
-      - Stripe__PublishableKey=pk_test_51S3UfIFkuPFy3lADPYhc1vpWmvExBWlcmlsoommBJlR8041rkardUtKcXxqLcthA7lLiBGEfAYNUegDVsjrSTbLJ00QGFjJ1Rd
-      - Stripe__SecretKey=sk_test_51S3UfIFkuPFy3lADlMZ0av334rGaElnrKh6PkDdylwPt7mhIy0vhmmL57UeWost5JGO5henRFdP60RnXZ8t7k7dn00qgeu5lPx
-    ports:
-      - "7001:80"
-    depends_on:
-      billing-postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 15s
-      retries: 5
-      start_period: 60s
-    networks:
-      - hms-network
+  # billing-service:
+  #   build:
+  #     context: .
+  #     dockerfile: src/Services/BillingService/BillingService.API/Dockerfile
+  #   container_name: hms-billing-service
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Development
+  #     - ASPNETCORE_URLS=http://+:80
+  #     - ConnectionStrings__DefaultConnection=Host=billing-postgres;Port=5432;Database=HMS_BillingDB;Username=postgres;Password=postgres123
+  #     - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+  #     - Jwt__Issuer=HMS.AuthService
+  #     - Jwt__Audience=HMS.Services
+  #     - Jwt__ExpiryMinutes=60
+  #     - RabbitMQ__HostName=rabbitmq
+  #     - RabbitMQ__Port=5672
+  #     - RabbitMQ__UserName=guest
+  #     - RabbitMQ__Password=guest
+  #     - Stripe__PublishableKey=pk_test_51S3UfIFkuPFy3lADPYhc1vpWmvExBWlcmlsoommBJlR8041rkardUtKcXxqLcthA7lLiBGEfAYNUegDVsjrSTbLJ00QGFjJ1Rd
+  #     - Stripe__SecretKey=sk_test_51S3UfIFkuPFy3lADlMZ0av334rGaElnrKh6PkDdylwPt7mhIy0vhmmL57UeWost5JGO5henRFdP60RnXZ8t7k7dn00qgeu5lPx
+  #   ports:
+  #     - "7001:80"
+  #   depends_on:
+  #     billing-postgres:
+  #       condition: service_healthy
+  #     rabbitmq:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost/health"]
+  #     interval: 30s
+  #     timeout: 15s
+  #     retries: 5
+  #     start_period: 60s
+  #   networks:
+  #     - hms-network
 
   # PostgreSQL for Image Service
   # image-postgres:

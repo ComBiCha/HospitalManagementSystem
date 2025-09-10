@@ -1,5 +1,5 @@
 using HospitalManagementSystem.Domain.Entities;
-using HospitalManagementSystem.Domain.Repositories;
+using HospitalManagementSystem.Domain.Storages;
 using HospitalManagementSystem.Infrastructure.Caching;
 using HospitalManagementSystem.Infrastructure.Persistence;
 using HospitalManagementSystem.Application.Services;

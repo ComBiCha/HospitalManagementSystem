@@ -25,12 +25,20 @@
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.2.0" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+
+    <PackageReference Include="Stripe.net" Version="43.0.0" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.57.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.25.1" />
   </ItemGroup>
 
   <ItemGroup>
     <Protobuf Include="Protos\patient.proto" GrpcServices="Server" />
     <Protobuf Include="Protos\auth.proto" GrpcServices="Server" />
     <Protobuf Include="Protos\doctor.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\billing.proto" GrpcServices="Server" />
   </ItemGroup>
 
 

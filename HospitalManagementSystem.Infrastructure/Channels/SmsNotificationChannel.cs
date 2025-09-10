@@ -1,4 +1,4 @@
-using HospitalManagementSystem.Domain.Repositories;
+using HospitalManagementSystem.Domain.Notifications;
 
 namespace HospitalManagementSystem.Infrastructure.Channels
 {
