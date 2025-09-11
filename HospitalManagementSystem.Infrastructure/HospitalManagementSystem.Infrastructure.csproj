@@ -16,6 +16,8 @@
     <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
     <PackageReference Include="Grpc.Net.Client" Version="2.57.0" />
     <PackageReference Include="Google.Protobuf" Version="3.25.1" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.0.2" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="7.0.2" />
   </ItemGroup>
 
   <PropertyGroup>

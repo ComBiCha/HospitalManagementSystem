@@ -1,17 +1,45 @@
 namespace HospitalManagementSystem.Domain.Events
 {
-    public class AppointmentCreatedEvent
+    public class AppointmentCreatedEvent : IDomainEvent
     {
-        public int AppointmentId { get; set; }
-        public int PatientId { get; set; }
-        public string PatientName { get; set; } = string.Empty;
-        public int DoctorId { get; set; }
-        public string DoctorName { get; set; } = string.Empty;
-        public string DoctorSpecialty { get; set; } = string.Empty;
-        public DateTime Date { get; set; }
-        public string Status { get; set; } = string.Empty;
-        public DateTime CreatedAt { get; set; }
-        public int CreatedByUserId { get; set; } 
-        public string CreatedByRole { get; set; } = string.Empty;
+        public int AppointmentId { get; }
+        public int PatientId { get; }
+        public string PatientName { get; }
+        public int DoctorId { get; }
+        public string DoctorName { get; }
+        public string DoctorSpecialty { get; }
+        public DateTime Date { get; }
+        public string Status { get; }
+        public DateTime CreatedAt { get; }
+        public int CreatedByUserId { get; }
+        public string CreatedByRole { get; }
+        public DateTime OccurredOn { get; }
+
+        public AppointmentCreatedEvent(
+            int appointmentId,
+            int patientId,
+            string patientName,
+            int doctorId,
+            string doctorName,
+            string doctorSpecialty,
+            DateTime date,
+            string status,
+            DateTime createdAt,
+            int createdByUserId,
+            string createdByRole)
+        {
+            AppointmentId = appointmentId;
+            PatientId = patientId;
+            PatientName = patientName;
+            DoctorId = doctorId;
+            DoctorName = doctorName;
+            DoctorSpecialty = doctorSpecialty;
+            Date = date;
+            Status = status;
+            CreatedAt = createdAt;
+            CreatedByUserId = createdByUserId;
+            CreatedByRole = createdByRole;
+            OccurredOn = DateTime.UtcNow;
+        }
     }
 }

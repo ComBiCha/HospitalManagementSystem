@@ -244,6 +244,12 @@ namespace HospitalManagementSystem.Infrastructure.Caching
             return patientCount;
         }
 
+        public async Task<List<PatientIdentifiers>> GetPatientIdentifiersAsync(int patientId)
+        {
+            // Nếu muốn cache, có thể thêm cache logic ở đây
+            return await _repository.GetPatientIdentifiersAsync(patientId);
+        }
+
         private async Task InvalidateListCaches()
         {
             await _cacheService.RemovePatternAsync("patient:all:*");

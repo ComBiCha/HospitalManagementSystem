@@ -109,42 +109,67 @@ services:
       dockerfile: HospitalManagementSystem.API/Dockerfile
     container_name: hms-api
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production
+      # - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Host=central-postgres;Database=HMS_CentralDB;Username=postgres;Password=postgres123;Port=5432
-      - ConnectionStrings__Redis=redis:6379,password=redis123
-      - Redis__Password=redis123
-      - SeaweedFS__MasterUrl=http://seaweed-master:9333
-      - SeaweedFS__PublicUrl=http://seaweed-filer:8888
-      - SeaweedFS__Replication=000
-      - RabbitMQ__HostName=rabbitmq
-      - RabbitMQ__Port=5672
-      - RabbitMQ__UserName=guest
-      - RabbitMQ__Password=guest
-      - Jwt__SecretKey=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
-      - Jwt__Issuer=HMS.AuthService
-      - Jwt__Audience=HMS.Services
-      # Email settings
-      - Email__SmtpServer=smtp.gmail.com
-      - Email__SmtpPort=587
-      - Email__Username=sangrk2004@gmail.com
-      - Email__Password=elhl wqmk qnva rwbj
-      - Email__FromEmail=sangrk2004@gmail.com
-      - Email__FromName=Hospital Management System
-      - Email__EnableSsl=true
-      - Email__UseDefaultCredentials=false
-      # SMS settings (Twilio example)
-      - SMS__AccountSid=your-twilio-sid
-      - SMS__AuthToken=your-twilio-token
-      - SMS__FromNumber=+1234567890
-      # Push notification settings (Firebase)
-      - Push__ServerKey=your-firebase-server-key
-      - Push__SenderId=your-firebase-sender-id
-      # Notification settings
-      - Notification__RetryAttempts=3
-      - Notification__RetryDelayMinutes=5
-      - Stripe__PublishableKey=pk_test_51S3UfIFkuPFy3lADPYhc1vpWmvExBWlcmlsoommBJlR8041rkardUtKcXxqLcthA7lLiBGEfAYNUegDVsjrSTbLJ00QGFjJ1Rd
-      - Stripe__SecretKey=sk_test_51S3UfIFkuPFy3lADlMZ0av334rGaElnrKh6PkDdylwPt7mhIy0vhmmL57UeWost5JGO5henRFdP60RnXZ8t7k7dn00qgeu5lPx
+        # Database
+      - DB-CONN=Host=hms-central-postgres;Database=HMS_CentralDB;Username=postgres;Password=postgres123;Port=5432
+      - REDIS-CONN=localhost:6379,password=redis123
+
+        # Redis
+      - REDIS-PASSWORD=redis123
+
+        # JWT
+      - JWT-SECRET=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
+      - JWT-ISSUER=HMS.AuthService
+      - JWT-AUDIENCE=HMS.Services
+      - JWT-EXPIRY=60
+
+        # Epic FHIR
+      - EPIC-BASEURL=https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4/
+      - EPIC-CLIENTID=3a81e8e1-81f7-4cd8-ac61-058c5d34c5de
+      - EPIC-TOKENURL=https://fhir.epic.com/interconnect-fhir-oauth/oauth2/token
+      - EPIC-PRIVATEKEY=/Users/tranhothanhsang/Projects/Net_Intern/Hospital_Management_System/src/privatekey.pem
+
+        # RabbitMQ
+      - RABBITMQ-HOST=localhost
+      - RABBITMQ-PORT=5672
+      - RABBITMQ-USER=guest
+      - RABBITMQ-PASS=guest
+
+        # Stripe
+      - STRIPE-PUB=pk_test_51S3UfIFkuPFy3lADPYhc1vpWmvExBWlcmlsoommBJlR8041rkardUtKcXxqLcthA7lLiBGEfAYNUegDVsjrSTbLJ00QGFjJ1Rd
+      - STRIPE-SECRET=sk_test_51S3UfIFkuPFy3lADlMZ0av334rGaElnrKh6PkDdylwPt7mhIy0vhmmL57UeWost5JGO5henRFdP60RnXZ8t7k7dn00qgeu5lPx
+
+        # Email
+      - EMAIL-SMTP=smtp.gmail.com
+      - EMAIL-PORT=587
+      - EMAIL-USER=sangrk2004@gmail.com
+      - EMAIL-PASS=elhl wqmk qnva rwbj
+      - EMAIL-FROM=sangrk2004@gmail.com
+      - EMAIL-NAME=Hospital Management System
+
+        # SMS
+      - SMS-SID=your-twilio-account-sid
+      - SMS-TOKEN=your-twilio-auth-token
+      - SMS-FROM=+1234567890
+
+        # Push
+      - PUSH-SERVERKEY=your-firebase-server-key
+      - PUSH-SENDER=your-firebase-sender-id
+
+        # Notification Service
+      - NOTI-RETRY=3
+      - NOTI-DELAY=5
+      - NOTI-EMAIL=true
+      - NOTI-SMS=true
+      - NOTI-PUSH=true
+
+        # SeaweedFS
+      - SEAWEED-MASTER=http://seaweed-master:9333
+      - SEAWEED-PUBLIC=http://localhost:8888
+      - SEAWEED-REPL=001
+      - SEAWEED-COLL=
+
     ports:
       - "7700:80"
     depends_on:
@@ -161,6 +186,8 @@ services:
       start_period: 60s
     networks:
       - hms-network
+    volumes:
+      - ./src/privatekey.pem:/src/privatekey.pem
 
   # Redis for caching (NEW)
   redis:

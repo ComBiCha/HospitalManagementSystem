@@ -17,6 +17,7 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
         public DbSet<User> Users { get; set; }
         public DbSet<ImageInfo> Images { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public DbSet<PatientIdentifiers> PatientIdentifiers { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -27,7 +28,28 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.Name).IsRequired();
                 entity.Property(e => e.Email).IsRequired();
+
+                // Quan hệ 1-n với PatientIdentifiers
+                entity.HasMany(e => e.PatientIdentifiers)
+                      .WithOne(pi => pi.Patient)
+                      .HasForeignKey(pi => pi.PatientId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
+
+            modelBuilder.Entity<PatientIdentifiers>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.EHRSystem).IsRequired();
+                entity.Property(e => e.ExternalId).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.IdentifierType).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.IsActive).HasDefaultValue(true);
+                entity.Property(e => e.CreatedAt).IsRequired();
+                entity.Property(e => e.UpdatedAt).IsRequired(false);
+
+                entity.HasIndex(e => e.PatientId);
+                entity.HasIndex(e => new { e.EHRSystem, e.ExternalId });
+            });
+
             modelBuilder.Entity<User>(entity =>
             {
                 entity.HasKey(e => e.Id);

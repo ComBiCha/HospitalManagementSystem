@@ -11,6 +11,7 @@ using HospitalManagementSystem.Infrastructure.Channels;
 using HospitalManagementSystem.Infrastructure.PaymentFactory;
 using HospitalManagementSystem.Infrastructure.PaymentMethods;
 using HospitalManagementSystem.Infrastructure.BillingStrategies;
+using HospitalManagementSystem.Domain.FhirEpic;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.API.Services;
 using HospitalManagementSystem.Domain.Repositories;
@@ -23,8 +24,23 @@ using HospitalManagementSystem.Domain.Storages;
 using HospitalManagementSystem.Domain.Notifications;
 using StackExchange.Redis;
 using Microsoft.OpenApi.Models;
+using DotNetEnv;
+using HospitalManagementSystem.Infrastructure.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// // Load .env
+// Env.Load();
+
+// // Áp dụng mapping
+// foreach (var pair in EnvKeyMapping.Map)
+// {
+//     var value = Environment.GetEnvironmentVariable(pair.Key);
+//     if (!string.IsNullOrEmpty(value))
+//     {
+//         builder.Configuration[pair.Value] = value;
+//     }
+// }
 
 // Kestrel config (nếu cần)
 builder.WebHost.ConfigureKestrel(serverOptions =>
@@ -141,6 +157,10 @@ builder.Services.AddScoped<CashPaymentMethod>();
 builder.Services.AddScoped<IPaymentFactory, PaymentFactory>();
 builder.Services.AddScoped<IBillingStrategyFactory, BillingStrategyFactory>();
 builder.Services.AddScoped<InsuranceBillingStrategy>();
+
+builder.Services.AddHttpClient<IFhirEpicIntegrationService, HospitalManagementSystem.Infrastructure.Services.FhirEpicIntegrationService>();
+builder.Services.AddScoped<FhirEpicIntegrationService>();
+builder.Services.AddScoped<PatientService>();
 
 var app = builder.Build();
 

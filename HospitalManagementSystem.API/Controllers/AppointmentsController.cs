@@ -263,20 +263,21 @@ namespace HospitalManagementSystem.API.Controllers
 
                 var createdAppointment = await _appointmentRepository.CreateAsync(appointment);
 
-                await _rabbitMQService.PublishAppointmentCreatedAsync(new AppointmentCreatedEvent
-                {
-                    AppointmentId = createdAppointment.Id,
-                    PatientId = createdAppointment.PatientId,
-                    PatientName = patient.Name,
-                    DoctorId = createdAppointment.DoctorId,
-                    DoctorName = doctor.Name,
-                    DoctorSpecialty = doctor.Specialty,
-                    Date = createdAppointment.Date,
-                    Status = createdAppointment.Status,
-                    CreatedAt = createdAppointment.CreatedAt,
-                    CreatedByUserId = currentUserId, 
-                    CreatedByRole = currentUserRole   
-                });
+                await _rabbitMQService.PublishAppointmentCreatedAsync(
+                    new AppointmentCreatedEvent(
+                        createdAppointment.Id,
+                        createdAppointment.PatientId,
+                        patient.Name,
+                        createdAppointment.DoctorId,
+                        doctor.Name,
+                        doctor.Specialty,
+                        createdAppointment.Date,
+                        createdAppointment.Status,
+                        createdAppointment.CreatedAt,
+                        currentUserId,
+                        currentUserRole
+                    )
+                );
 
                 var appointmentDto = await MapToAppointmentDto(createdAppointment);
 

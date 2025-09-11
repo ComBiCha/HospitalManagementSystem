@@ -159,5 +159,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 throw;
             }
         }
+
+        public async Task<List<PatientIdentifiers>> GetPatientIdentifiersAsync(int patientId)
+        {
+            return await _context.PatientIdentifiers
+                .Where(pi => pi.PatientId == patientId)
+                .ToListAsync();
+        }
     }
 }

@@ -4,6 +4,8 @@ using HospitalManagementSystem.Domain.Repositories;
 using HospitalManagementSystem.Infrastructure.Caching;
 using HospitalManagementSystem.Domain.Caching;
 using HospitalManagementSystem.Application.Services;
+using HospitalManagementSystem.Application.DTOs;
+using HospitalManagementSystem.Application.Services;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -13,15 +15,18 @@ namespace HospitalManagementSystem.API.Controllers
     {
         private readonly IPatientRepository _patientRepository;
         private readonly ICacheService _cacheService;
+        private readonly PatientService _patientService;
         private readonly ILogger<PatientsController> _logger;
 
         public PatientsController(
             IPatientRepository patientRepository,
             ICacheService cacheService,
+            PatientService patientService,
             ILogger<PatientsController> logger)
         {
             _patientRepository = patientRepository;
             _cacheService = cacheService;
+            _patientService = patientService;
             _logger = logger;
         }
 
@@ -307,6 +312,63 @@ namespace HospitalManagementSystem.API.Controllers
                     IsOnHold = patient.IsOnHold
                 }
             });
+        }
+        [HttpPost("full")]
+        public async Task<IActionResult> CreateFullPatient([FromBody] PatientCreateDto dto)
+        {
+            try
+            {
+                var createdPatient = await _patientService.CreatePatientAsync(dto);
+                return CreatedAtAction(nameof(GetPatient), new { id = createdPatient.Id }, new
+                {
+                    createdPatient.Id,
+                    createdPatient.Name,
+                    createdPatient.Age,
+                    createdPatient.Email,
+                    createdPatient.Status,
+                    createdPatient.CreatedAt,
+                    createdPatient.UpdatedAt,
+                    Identifiers = createdPatient.PatientIdentifiers.Select(x => new
+                    {
+                        x.Id,
+                        x.EHRSystem,
+                        x.ExternalId,
+                        x.IdentifierType,
+                        x.IsActive,
+                        x.CreatedAt,
+                        x.UpdatedAt
+                    })
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating patient with identifiers");
+                return StatusCode(500, new { message = "Error creating patient" });
+            }
+        }
+        [HttpGet("{id}/identifiers")]
+        public async Task<IActionResult> GetPatientIdentifiers(int id)
+        {
+            var identifiers = await _patientService.GetPatientIdentifiersAsync(id);
+            if (identifiers == null || identifiers.Count == 0)
+                return NotFound(new { message = "No identifiers found for this patient." });
+
+            return Ok(identifiers.Select(x => new
+            {
+                x.EHRSystem,
+                x.ExternalId,
+                x.IdentifierType,
+                x.IsActive
+            }));
+        }
+        [HttpGet("{id}/ehr")]
+        public async Task<IActionResult> GetPatientInfoFromEhr(int id, [FromQuery] EHRSystem ehrSystem = EHRSystem.Epic)
+        {
+            var info = await _patientService.GetPatientInfoFromEhrAsync(id, ehrSystem);
+            if (info == null)
+                return NotFound(new { message = $"No identifier or data found for EHR system '{ehrSystem}'." });
+
+            return Ok(info);
         }
 
 
