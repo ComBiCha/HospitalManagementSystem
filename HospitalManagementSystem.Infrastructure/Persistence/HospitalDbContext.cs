@@ -87,12 +87,13 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
             modelBuilder.Entity<Doctor>(entity =>
             {
                 entity.HasKey(e => e.Id);
-                
+
                 entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
                 entity.Property(e => e.Specialty).IsRequired().HasMaxLength(100);
                 entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
-                
+
                 entity.HasIndex(e => e.Email).IsUnique();
+                // entity.HasIndex(e => e.gender);
             });
 
             modelBuilder.Entity<ImageInfo>(entity =>
@@ -199,10 +200,8 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
 
         private static void SeedDefaultUsers(ModelBuilder modelBuilder)
         {
-            var adminPasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123");
-            var doctorPasswordHash = BCrypt.Net.BCrypt.HashPassword("doctor123");
-            var patientPasswordHash = BCrypt.Net.BCrypt.HashPassword("patient123");
-
+            var adminPasswordHash = "$2a$11$QeJ8p9Qw1Qw1Qw1Qw1Qw1uQw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw";
+            
             modelBuilder.Entity<User>().HasData(
                 new User
                 {

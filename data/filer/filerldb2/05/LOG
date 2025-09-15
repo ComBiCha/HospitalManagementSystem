@@ -70,3 +70,16 @@
 01:55:37.800501 version@stat F·[] S·0B[] Sc·[]
 01:55:37.801680 db@janitor F·2 G·0
 01:55:37.801708 db@open done T·1.847625ms
+10:03:29.973419 db@close closing
+10:03:29.974188 db@close done T·783.417µs
+=============== Sep 12, 2025 (UTC) ===============
+00:44:23.922845 log@legend F·NumFile S·FileSize N·Entry C·BadEntry B·BadBlock Ke·KeyError D·DroppedEntry L·Level Q·SeqNum T·TimeElapsed
+00:44:23.923988 version@stat F·[] S·0B[] Sc·[]
+00:44:23.924184 db@open opening
+00:44:23.924441 journal@recovery F·1
+00:44:23.924542 journal@recovery recovering @12
+00:44:23.924905 version@stat F·[] S·0B[] Sc·[]
+00:44:23.926618 db@janitor F·2 G·0
+00:44:23.926650 db@open done T·2.4315ms
+10:03:10.512079 db@close closing
+10:03:10.514004 db@close done T·1.924791ms

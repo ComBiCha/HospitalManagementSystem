@@ -19,11 +19,17 @@ namespace HospitalManagementSystem.Infrastructure.Configuration
             { "JWT-AUDIENCE", "Jwt:Audience" },
             { "JWT-EXPIRY", "Jwt:ExpiryMinutes" },
 
-            // Epic FHIR
+            // Epic
             { "EPIC-BASEURL", "EpicFhir:BaseUrl" },
             { "EPIC-CLIENTID", "EpicFhir:ClientId" },
             { "EPIC-TOKENURL", "EpicFhir:TokenUrl" },
             { "EPIC-PRIVATEKEY", "EpicFhir:PrivateKeyPath" },
+
+            // Cerner
+            { "CERNER-CLIENTID", "CernerFhir:ClientId" },
+            { "CERNER-CLIENTSECRET", "CernerFhir:ClientSecret" },
+            { "CERNER-TOKENURL", "CernerFhir:TokenUrl" },
+            { "CERNER-FHIRBASEURL", "CernerFhir:FhirBaseUrl" },
 
             // RabbitMQ
             { "RABBITMQ-HOST", "RabbitMQ:HostName" },

@@ -1,4 +1,4 @@
-using HospitalManagementSystem.Domain.FhirEpic;
+using HospitalManagementSystem.Domain.Fhir;
 using Microsoft.Extensions.Configuration;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -11,9 +11,9 @@ using System.Text.RegularExpressions;
 using System.Xml;
 
 
-namespace HospitalManagementSystem.Infrastructure.Services
+namespace HospitalManagementSystem.Infrastructure.Epic
 {
-    public class FhirEpicIntegrationService : IFhirEpicIntegrationService
+    public class EpicFhirIntegrationService : IEhrFhirIntegrationService
     {
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _config;
@@ -21,7 +21,7 @@ namespace HospitalManagementSystem.Infrastructure.Services
         private readonly string _tokenUrl;
         private readonly string _privateKeyPath;
 
-        public FhirEpicIntegrationService(HttpClient httpClient, IConfiguration config)
+        public EpicFhirIntegrationService(HttpClient httpClient, IConfiguration config)
         {
             _httpClient = httpClient;
             _config = config;
@@ -105,30 +105,6 @@ namespace HospitalManagementSystem.Infrastructure.Services
         {
             await EnsureAccessTokenAsync();
             var response = await _httpClient.GetAsync($"Patient/{patientId}");
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"Epic token request failed: {response.StatusCode} - {error}");
-            }
-            return await response.Content.ReadAsStringAsync();
-        }
-
-        public async Task<string> GetAppointmentsAsync(string patientId)
-        {
-            await EnsureAccessTokenAsync();
-            var response = await _httpClient.GetAsync($"Appointment?patient={patientId}");
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"Epic token request failed: {response.StatusCode} - {error}");
-            }
-            return await response.Content.ReadAsStringAsync();
-        }
-
-        public async Task<string> GetMedicationsAsync(string patientId)
-        {
-            await EnsureAccessTokenAsync();
-            var response = await _httpClient.GetAsync($"MedicationRequest?patient={patientId}");
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();

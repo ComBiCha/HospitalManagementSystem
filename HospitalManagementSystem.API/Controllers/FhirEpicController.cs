@@ -1,35 +1,22 @@
 using Microsoft.AspNetCore.Mvc;
 using HospitalManagementSystem.Application.Services;
+using HospitalManagementSystem.Domain.Fhir;
 
 [ApiController]
 [Route("api/[controller]")]
 public class FhirEpicController : ControllerBase
 {
-    private readonly FhirEpicIntegrationService _fhirEpicService;
+    private readonly EhrFhirApplicationService _ehrFhirService;
 
-    public FhirEpicController(FhirEpicIntegrationService fhirEpicService)
+    public FhirEpicController(EhrFhirApplicationService ehrFhirService)
     {
-        _fhirEpicService = fhirEpicService;
+        _ehrFhirService = ehrFhirService;
     }
 
     [HttpGet("patient/{id}")]
-    public async Task<IActionResult> GetPatientDemographics(string id)
+    public async Task<IActionResult> GetPatientDemographics(string id, [FromQuery] EHRSystem ehrSystem = EHRSystem.Epic)
     {
-        var result = await _fhirEpicService.GetPatientDemographicsAsync(id);
-        return Ok(result);
-    }
-
-    [HttpGet("appointments/{patientId}")]
-    public async Task<IActionResult> GetAppointments(string patientId)
-    {
-        var result = await _fhirEpicService.GetAppointmentsAsync(patientId);
-        return Ok(result);
-    }
-
-    [HttpGet("medications/{patientId}")]
-    public async Task<IActionResult> GetMedications(string patientId)
-    {
-        var result = await _fhirEpicService.GetMedicationsAsync(patientId);
+        var result = await _ehrFhirService.GetPatientDemographicsAsync(id, ehrSystem);
         return Ok(result);
     }
 }

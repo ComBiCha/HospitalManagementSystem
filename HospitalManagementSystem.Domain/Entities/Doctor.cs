@@ -8,17 +8,17 @@ namespace HospitalManagementSystem.Domain.Entities
     {
         [Column("Id")]
         public int Id { get; set; }
-        
+
         [Required]
         [StringLength(200)]
         [Column("Name")]
         public string Name { get; set; } = string.Empty;
-        
+
         [Required]
         [StringLength(100)]
         [Column("Specialty")]
         public string Specialty { get; set; } = string.Empty;
-        
+
         [Required]
         [EmailAddress]
         [StringLength(255)]

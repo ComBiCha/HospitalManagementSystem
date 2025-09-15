@@ -11,7 +11,9 @@ using HospitalManagementSystem.Infrastructure.Channels;
 using HospitalManagementSystem.Infrastructure.PaymentFactory;
 using HospitalManagementSystem.Infrastructure.PaymentMethods;
 using HospitalManagementSystem.Infrastructure.BillingStrategies;
-using HospitalManagementSystem.Domain.FhirEpic;
+using HospitalManagementSystem.Infrastructure.Epic;
+using HospitalManagementSystem.Infrastructure.Cerner;
+using HospitalManagementSystem.Infrastructure.FhirFactory;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.API.Services;
 using HospitalManagementSystem.Domain.Repositories;
@@ -29,20 +31,20 @@ using HospitalManagementSystem.Infrastructure.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// // Load .env
-// Env.Load();
+// Load .env
+Env.Load();
 
-// // Áp dụng mapping
-// foreach (var pair in EnvKeyMapping.Map)
-// {
-//     var value = Environment.GetEnvironmentVariable(pair.Key);
-//     if (!string.IsNullOrEmpty(value))
-//     {
-//         builder.Configuration[pair.Value] = value;
-//     }
-// }
+// Áp dụng mapping
+foreach (var pair in EnvKeyMapping.Map)
+{
+    var value = Environment.GetEnvironmentVariable(pair.Key);
+    if (!string.IsNullOrEmpty(value))
+    {
+        builder.Configuration[pair.Value] = value;
+    }
+}
 
-// Kestrel config (nếu cần)
+// Kestrel config 
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
     serverOptions.ListenAnyIP(80);
@@ -158,43 +160,19 @@ builder.Services.AddScoped<IPaymentFactory, PaymentFactory>();
 builder.Services.AddScoped<IBillingStrategyFactory, BillingStrategyFactory>();
 builder.Services.AddScoped<InsuranceBillingStrategy>();
 
-builder.Services.AddHttpClient<IFhirEpicIntegrationService, HospitalManagementSystem.Infrastructure.Services.FhirEpicIntegrationService>();
-builder.Services.AddScoped<FhirEpicIntegrationService>();
+builder.Services.AddScoped<EpicFhirIntegrationService>();
+builder.Services.AddScoped<CernerFhirIntegrationService>();
+builder.Services.AddScoped<EhrFhirIntegrationFactory>();
+builder.Services.AddScoped<EhrFhirApplicationService>();
+
 builder.Services.AddScoped<PatientService>();
 
 var app = builder.Build();
 
-// Database migration/check
 using (var scope = app.Services.CreateScope())
 {
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    try
-    {
-        var context = scope.ServiceProvider.GetRequiredService<HospitalDbContext>();
-        if (await context.Database.CanConnectAsync())
-        {
-            logger.LogInformation("Database connection successful");
-            context.Database.EnsureCreated();
-        }
-        else
-        {
-            logger.LogWarning("Database connection failed");
-        }
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Database setup failed: {Error}", ex.Message);
-    }
-    try
-    {
-        var cacheService = scope.ServiceProvider.GetRequiredService<ICacheService>();
-        await cacheService.SetAsync("startup-test", DateTime.UtcNow.ToString(), TimeSpan.FromMinutes(1));
-        logger.LogInformation("Redis cache connection verified");
-    }
-    catch (Exception ex)
-    {
-        logger.LogWarning(ex, "Redis setup failed: {Error}", ex.Message);
-    }
+    var dbContext = scope.ServiceProvider.GetRequiredService<HospitalDbContext>();
+    dbContext.Database.Migrate();
 }
 
 // HTTP pipeline

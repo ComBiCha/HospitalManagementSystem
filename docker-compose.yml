@@ -109,67 +109,44 @@ services:
       dockerfile: HospitalManagementSystem.API/Dockerfile
     container_name: hms-api
     environment:
-      # - ASPNETCORE_ENVIRONMENT=Production
-      - ASPNETCORE_URLS=http://+:80
-        # Database
-      - DB-CONN=Host=hms-central-postgres;Database=HMS_CentralDB;Username=postgres;Password=postgres123;Port=5432
-      - REDIS-CONN=localhost:6379,password=redis123
-
-        # Redis
-      - REDIS-PASSWORD=redis123
-
-        # JWT
-      - JWT-SECRET=HMS_SuperSecretKey_ForDevelopment_2024_MustBe32CharsOrMore!
-      - JWT-ISSUER=HMS.AuthService
-      - JWT-AUDIENCE=HMS.Services
-      - JWT-EXPIRY=60
-
-        # Epic FHIR
-      - EPIC-BASEURL=https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4/
-      - EPIC-CLIENTID=3a81e8e1-81f7-4cd8-ac61-058c5d34c5de
-      - EPIC-TOKENURL=https://fhir.epic.com/interconnect-fhir-oauth/oauth2/token
-      - EPIC-PRIVATEKEY=/Users/tranhothanhsang/Projects/Net_Intern/Hospital_Management_System/src/privatekey.pem
-
-        # RabbitMQ
-      - RABBITMQ-HOST=localhost
-      - RABBITMQ-PORT=5672
-      - RABBITMQ-USER=guest
-      - RABBITMQ-PASS=guest
-
-        # Stripe
-      - STRIPE-PUB=pk_test_51S3UfIFkuPFy3lADPYhc1vpWmvExBWlcmlsoommBJlR8041rkardUtKcXxqLcthA7lLiBGEfAYNUegDVsjrSTbLJ00QGFjJ1Rd
-      - STRIPE-SECRET=sk_test_51S3UfIFkuPFy3lADlMZ0av334rGaElnrKh6PkDdylwPt7mhIy0vhmmL57UeWost5JGO5henRFdP60RnXZ8t7k7dn00qgeu5lPx
-
-        # Email
-      - EMAIL-SMTP=smtp.gmail.com
-      - EMAIL-PORT=587
-      - EMAIL-USER=sangrk2004@gmail.com
-      - EMAIL-PASS=elhl wqmk qnva rwbj
-      - EMAIL-FROM=sangrk2004@gmail.com
-      - EMAIL-NAME=Hospital Management System
-
-        # SMS
-      - SMS-SID=your-twilio-account-sid
-      - SMS-TOKEN=your-twilio-auth-token
-      - SMS-FROM=+1234567890
-
-        # Push
-      - PUSH-SERVERKEY=your-firebase-server-key
-      - PUSH-SENDER=your-firebase-sender-id
-
-        # Notification Service
-      - NOTI-RETRY=3
-      - NOTI-DELAY=5
-      - NOTI-EMAIL=true
-      - NOTI-SMS=true
-      - NOTI-PUSH=true
-
-        # SeaweedFS
-      - SEAWEED-MASTER=http://seaweed-master:9333
-      - SEAWEED-PUBLIC=http://localhost:8888
-      - SEAWEED-REPL=001
-      - SEAWEED-COLL=
-
+      - ASPNETCORE_URLS
+      - DB-CONN
+      - REDIS-CONN
+      - REDIS-PASSWORD
+      - JWT-SECRET
+      - JWT-ISSUER
+      - JWT-AUDIENCE
+      - JWT-EXPIRY
+      - EPIC-BASEURL
+      - EPIC-CLIENTID
+      - EPIC-TOKENURL
+      - EPIC-PRIVATEKEY
+      - RABBITMQ-HOST
+      - RABBITMQ-PORT
+      - RABBITMQ-USER
+      - RABBITMQ-PASS
+      - STRIPE-PUB
+      - STRIPE-SECRET
+      - EMAIL-SMTP
+      - EMAIL-PORT
+      - EMAIL-USER
+      - EMAIL-PASS
+      - EMAIL-FROM
+      - EMAIL-NAME
+      - SMS-SID
+      - SMS-TOKEN
+      - SMS-FROM
+      - PUSH-SERVERKEY
+      - PUSH-SENDER
+      - NOTI-RETRY
+      - NOTI-DELAY
+      - NOTI-EMAIL
+      - NOTI-SMS
+      - NOTI-PUSH
+      - SEAWEED-MASTER
+      - SEAWEED-PUBLIC
+      - SEAWEED-REPL
+      - SEAWEED-COLL
     ports:
       - "7700:80"
     depends_on:

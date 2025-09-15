@@ -1,18 +1,19 @@
 using HospitalManagementSystem.Domain.Entities;
 using HospitalManagementSystem.Domain.Repositories;
 using HospitalManagementSystem.Application.DTOs;
-using HospitalManagementSystem.Domain.FhirEpic;
+using HospitalManagementSystem.Domain.Fhir;
+using HospitalManagementSystem.Infrastructure.FhirFactory;
 using System.Xml.Linq;
 
 public class PatientService
 {
     private readonly IPatientRepository _patientRepository;
-    private readonly IFhirEpicIntegrationService _fhirEpicIntegrationService;
+    private readonly EhrFhirIntegrationFactory _ehrFhirFactory;
 
-    public PatientService(IPatientRepository patientRepository, IFhirEpicIntegrationService fhirEpicIntegrationService)
+    public PatientService(IPatientRepository patientRepository, EhrFhirIntegrationFactory ehrFhirFactory)
     {
         _patientRepository = patientRepository;
-        _fhirEpicIntegrationService = fhirEpicIntegrationService;
+        _ehrFhirFactory = ehrFhirFactory;
     }
 
     public async Task<Patient> CreatePatientAsync(PatientCreateDto dto)
@@ -53,15 +54,17 @@ public class PatientService
         if (identifier == null)
             return null;
 
-        if (ehrSystem == EHRSystem.Epic)
-        {
-                var xml = await _fhirEpicIntegrationService.GetPatientDemographicsAsync(identifier.ExternalId);
-                return ParseEpicPatientXml(xml);
-        }
-        // else if (ehrSystem == EHRSystem.Cerner) { ... }
-        // else if (ehrSystem == EHRSystem.Meditech) { ... }
+        var service = _ehrFhirFactory.GetService(ehrSystem);
+        if (service == null)
+            return null;
 
-        return null;
+        var result = await service.GetPatientDemographicsAsync(identifier.ExternalId);
+
+        if (ehrSystem == EHRSystem.Epic && result is string xml)
+        {
+            return ParseEpicPatientXml(xml);
+        }
+        return result;
     }
 
     public object ParseEpicPatientXml(string xml)
