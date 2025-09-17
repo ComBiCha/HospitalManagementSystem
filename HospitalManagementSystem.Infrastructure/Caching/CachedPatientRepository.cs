@@ -25,7 +25,7 @@ namespace HospitalManagementSystem.Infrastructure.Caching
         public async Task<Patient?> GetPatientByIdAsync(int id)
         {
             var cacheKey = CacheKeyGenerator.PatientById(id);
-            
+
             // Try to get from cache first
             var cachedPatient = await _cacheService.GetAsync<Patient>(cacheKey);
             if (cachedPatient != null)
@@ -49,7 +49,7 @@ namespace HospitalManagementSystem.Infrastructure.Caching
         public async Task<Patient?> GetPatientByEmailAsync(string email)
         {
             var cacheKey = CacheKeyGenerator.PatientByEmail(email);
-            
+
             var cachedPatient = await _cacheService.GetAsync<Patient>(cacheKey);
             if (cachedPatient != null)
             {
@@ -61,11 +61,11 @@ namespace HospitalManagementSystem.Infrastructure.Caching
             if (patient != null)
             {
                 await _cacheService.SetAsync(cacheKey, patient, CacheExpiry.PatientInfo);
-                
+
                 // Also cache by ID for cross-reference
                 var idCacheKey = CacheKeyGenerator.PatientById(patient.Id);
                 await _cacheService.SetAsync(idCacheKey, patient, CacheExpiry.PatientInfo);
-                
+
                 _logger.LogDebug("Patient with email {Email} cached", email);
             }
 
@@ -96,7 +96,7 @@ namespace HospitalManagementSystem.Infrastructure.Caching
         public async Task<IEnumerable<Patient>> GetPatientsByNameAsync(string name)
         {
             var cacheKey = CacheKeyGenerator.PatientsByName(name);
-            
+
             var cachedPatients = await _cacheService.GetAsync<IEnumerable<Patient>>(cacheKey);
             if (cachedPatients != null)
             {
@@ -117,17 +117,17 @@ namespace HospitalManagementSystem.Infrastructure.Caching
         public async Task<Patient> CreatePatientAsync(Patient patient)
         {
             var createdPatient = await _repository.CreatePatientAsync(patient);
-            
+
             // Cache the new patient
             var idCacheKey = CacheKeyGenerator.PatientById(createdPatient.Id);
             var emailCacheKey = CacheKeyGenerator.PatientByEmail(createdPatient.Email);
-            
+
             await _cacheService.SetAsync(idCacheKey, createdPatient, CacheExpiry.PatientInfo);
             await _cacheService.SetAsync(emailCacheKey, createdPatient, CacheExpiry.PatientInfo);
-            
+
             // Invalidate list caches since we added a new patient
             await InvalidateListCaches();
-            
+
             _logger.LogInformation("Patient {PatientId} created and cached", createdPatient.Id);
             return createdPatient;
         }
@@ -181,22 +181,22 @@ namespace HospitalManagementSystem.Infrastructure.Caching
         {
             // Get patient first to know details for cache invalidation
             var patient = await _repository.GetPatientByIdAsync(id);
-            
+
             var result = await _repository.DeletePatientAsync(id);
-            
+
             if (result && patient != null)
             {
                 // Remove from caches
                 var idCacheKey = CacheKeyGenerator.PatientById(id);
                 var emailCacheKey = CacheKeyGenerator.PatientByEmail(patient.Email);
-                
+
                 await _cacheService.RemoveAsync(idCacheKey);
                 await _cacheService.RemoveAsync(emailCacheKey);
-                
+
                 // Invalidate related caches
                 await InvalidateListCaches();
                 await InvalidateSearchCaches(patient.Name);
-                
+
                 _logger.LogInformation("Patient {PatientId} deleted and removed from cache", id);
             }
 
@@ -206,7 +206,7 @@ namespace HospitalManagementSystem.Infrastructure.Caching
         public async Task<IEnumerable<Patient>> GetRecentPatientsAsync(int count = 50)
         {
             var cacheKey = CacheKeyGenerator.RecentPatients(count);
-            
+
             var cachedPatients = await _cacheService.GetAsync<IEnumerable<Patient>>(cacheKey);
             if (cachedPatients != null)
             {
@@ -228,7 +228,7 @@ namespace HospitalManagementSystem.Infrastructure.Caching
         public async Task<int> GetPatientCountAsync()
         {
             var cacheKey = CacheKeyGenerator.PatientCount();
-            
+
             var cachedCount = await _cacheService.GetStringAsync(cacheKey);
             if (cachedCount != null && int.TryParse(cachedCount, out var count))
             {
@@ -266,7 +266,7 @@ namespace HospitalManagementSystem.Infrastructure.Caching
 
             // Also invalidate recent patients caches
             await _cacheService.RemovePatternAsync("patient:recent:*");
-            
+
             _logger.LogDebug("List caches invalidated");
         }
 
@@ -284,15 +284,15 @@ namespace HospitalManagementSystem.Infrastructure.Caching
         public async Task WarmupCacheAsync()
         {
             _logger.LogInformation("Starting patient cache warmup...");
-            
+
             try
             {
                 // Cache recent patients
                 await GetRecentPatientsAsync(100);
-                
+
                 // Cache patient count
                 await GetPatientCountAsync();
-                
+
                 _logger.LogInformation("Patient cache warmup completed successfully");
             }
             catch (Exception ex)
@@ -312,6 +312,11 @@ namespace HospitalManagementSystem.Infrastructure.Caching
             {
                 _logger.LogError(ex, "Error clearing patient caches");
             }
+        }
+        
+        public async Task<(List<Patient> Data, string? NextLink, string? PreviousLink)> GetPatientsWithNextLinkAsync(int? lastId = null, int pageSize = 20, string baseUrl = "")
+        {
+            return await _repository.GetPatientsWithNextLinkAsync(lastId, pageSize, baseUrl);
         }
     }
 }

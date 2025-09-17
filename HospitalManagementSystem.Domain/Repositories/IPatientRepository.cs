@@ -12,9 +12,10 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<Patient> CreatePatientAsync(Patient patient);
         Task<Patient?> UpdatePatientAsync(Patient patient);
         Task<bool> DeletePatientAsync(int id);
-        
+
         // Additional methods for cached repository
         Task<IEnumerable<Patient>> GetRecentPatientsAsync(int count = 50);
         Task<int> GetPatientCountAsync();
+        Task<(List<Patient> Data, string? NextLink, string? PreviousLink)> GetPatientsWithNextLinkAsync(int? lastId = null, int pageSize = 20, string baseUrl = "");
     }
 }

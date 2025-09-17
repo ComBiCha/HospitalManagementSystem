@@ -112,5 +112,37 @@ namespace HospitalManagementSystem.Infrastructure.Epic
             }
             return await response.Content.ReadAsStringAsync();
         }
+        public async Task<string> SearchPatientsAsync (string? name = null,
+                                                        string? email = null,
+                                                        string? phone = null,
+                                                        string? gender = null,
+                                                        string? identifier = null)
+        {
+            await EnsureAccessTokenAsync();
+            var queryParams = new List<string>();
+            if (!string.IsNullOrEmpty(name))
+                queryParams.Add($"name={Uri.EscapeDataString(name)}");
+            if (!string.IsNullOrEmpty(email))
+                queryParams.Add($"email={Uri.EscapeDataString(email)}");
+            if (!string.IsNullOrEmpty(phone))
+                queryParams.Add($"phone={Uri.EscapeDataString(phone)}");
+            if (!string.IsNullOrEmpty(gender))
+                queryParams.Add($"gender={Uri.EscapeDataString(gender)}");
+            if (!string.IsNullOrEmpty(identifier))
+                queryParams.Add($"identifier={Uri.EscapeDataString(identifier)}");
+
+            var queryString = string.Join("&", queryParams);
+            var url = "Patient";
+            if (queryParams.Count > 0)
+                url += "?" + queryString;
+
+            var response = await _httpClient.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Epic search patients request failed: {response.StatusCode} - {error}");
+            }
+            return await response.Content.ReadAsStringAsync();
+        }
     }
 }

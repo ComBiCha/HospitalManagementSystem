@@ -67,5 +67,10 @@ namespace HospitalManagementSystem.Infrastructure.Cerner
 
             return await response.Content.ReadAsStringAsync(); // JSON FHIR Patient
         }
+        public async Task<string> SearchPatientsAsync (string? name = null, string? email = null, string? phone = null, string? gender = null, string? identifier = null)
+        {
+            await EnsureAccessTokenAsync();
+            return await Task.FromResult(string.Empty);
+        }
     }
 }

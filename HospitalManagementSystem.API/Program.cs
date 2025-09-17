@@ -14,6 +14,7 @@ using HospitalManagementSystem.Infrastructure.BillingStrategies;
 using HospitalManagementSystem.Infrastructure.Epic;
 using HospitalManagementSystem.Infrastructure.Cerner;
 using HospitalManagementSystem.Infrastructure.FhirFactory;
+using HospitalManagementSystem.Infrastructure.Dicom;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.API.Services;
 using HospitalManagementSystem.Domain.Repositories;
@@ -24,6 +25,7 @@ using HospitalManagementSystem.Domain.Factories;
 using HospitalManagementSystem.Domain.RabbitMQ;
 using HospitalManagementSystem.Domain.Storages;
 using HospitalManagementSystem.Domain.Notifications;
+using HospitalManagementSystem.Domain.Dicom;
 using StackExchange.Redis;
 using Microsoft.OpenApi.Models;
 using DotNetEnv;
@@ -164,6 +166,9 @@ builder.Services.AddScoped<EpicFhirIntegrationService>();
 builder.Services.AddScoped<CernerFhirIntegrationService>();
 builder.Services.AddScoped<EhrFhirIntegrationFactory>();
 builder.Services.AddScoped<EhrFhirApplicationService>();
+
+builder.Services.AddScoped<IDicomService, DicomService>();
+builder.Services.AddScoped<DicomApplicationService>();
 
 builder.Services.AddScoped<PatientService>();
 

@@ -371,6 +371,43 @@ namespace HospitalManagementSystem.API.Controllers
             return Ok(info);
         }
 
+        [HttpGet("next")]
+        public async Task<IActionResult> GetPatientsNext([FromQuery] int? lastId = null, [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var baseUrl = $"{Request.Path}";
+                var (data, nextLink, previousLink) = await _patientService.GetPatientsWithNextLinkAsync(lastId, pageSize, baseUrl);
+                return Ok(new { data, nextLink, previousLink });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting patients with next link");
+                return StatusCode(500, new { message = "Error retrieving patients" });
+            }
+        }
+
+        [HttpGet("ehr/search")]
+        public async Task<IActionResult> SearchPatientsInEhr(
+            [FromQuery] EHRSystem ehrSystem = EHRSystem.Epic,
+            [FromQuery] string? name = null,
+            [FromQuery] string? email = null,
+            [FromQuery] string? phone = null,
+            [FromQuery] string? gender = null,
+            [FromQuery] string? identifier = null)
+        {
+            try
+            {
+                var results = await _patientService.SearchPatientsInEhrAsync(ehrSystem, name, email, phone, gender, identifier);
+                return Ok(results);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching patients in EHR system: {EHRSystem}", ehrSystem);
+                return StatusCode(500, new { message = "Error searching patients in EHR system" });
+            }
+        }
+
 
     }
             public class PatientStatusRequest

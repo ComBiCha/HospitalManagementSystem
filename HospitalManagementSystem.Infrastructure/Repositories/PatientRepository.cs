@@ -97,7 +97,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
 
                 _context.Entry(existingPatient).CurrentValues.SetValues(patient);
                 await _context.SaveChangesAsync();
-                
+
                 _logger.LogInformation("Patient updated: {PatientId}", patient.Id);
                 return existingPatient;
             }
@@ -120,7 +120,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
 
                 _context.Patients.Remove(patient);
                 await _context.SaveChangesAsync();
-                
+
                 _logger.LogInformation("Patient deleted: {PatientId}", id);
                 return true;
             }
@@ -165,6 +165,35 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             return await _context.PatientIdentifiers
                 .Where(pi => pi.PatientId == patientId)
                 .ToListAsync();
+        }
+        
+        public async Task<(List<Patient> Data, string? NextLink, string? PreviousLink)> GetPatientsWithNextLinkAsync(int? lastId = null, int pageSize = 20, string baseUrl = "")
+        {
+            var query = _context.Patients.OrderBy(p => p.Id).AsQueryable();
+
+            if (lastId.HasValue)
+            {
+                query = query.Where(p => p.Id > lastId.Value);
+            }
+
+            var patients = await query.Take(pageSize).ToListAsync();
+
+            // Tính nextLink
+            string? nextLink = null;
+            string? previousLink = null;
+            if (patients.Count == pageSize)
+            {
+                int nextCursor = patients.Last().Id;
+                nextLink = $"{baseUrl}?lastId={nextCursor}&pageSize={pageSize}";
+            }
+
+            if (lastId.HasValue && lastId.Value > 0)
+            {
+                int prevCursor = Math.Max(0, lastId.Value - pageSize);
+                previousLink = $"{baseUrl}?lastId={prevCursor}&pageSize={pageSize}";
+            }
+
+            return (patients, nextLink, previousLink);
         }
     }
 }

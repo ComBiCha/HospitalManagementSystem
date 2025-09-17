@@ -166,6 +166,17 @@ services:
     volumes:
       - ./src/privatekey.pem:/src/privatekey.pem
 
+
+  orthanc:
+    image: jodogne/orthanc-plugins:latest
+    ports:
+      - "8042:8042"
+      - "4242:4242"
+    environment:
+      ORTHANC__RemoteAccessAllowed: "true"
+    networks:
+      - hms-network
+
   # Redis for caching (NEW)
   redis:
     image: redis:7-alpine

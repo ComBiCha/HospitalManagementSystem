@@ -66,6 +66,23 @@ public class PatientService
         }
         return result;
     }
+    public async Task<(List<Patient> Data, string? NextLink, string? PreviousLink)> GetPatientsWithNextLinkAsync(int? lastId = null, int pageSize = 20, string baseUrl = "/api/patients")
+    {
+        return await _patientRepository.GetPatientsWithNextLinkAsync(lastId, pageSize, baseUrl);
+    }
+    public async Task<string> SearchPatientsInEhrAsync(EHRSystem ehrSystem,
+    string? name = null,
+    string? email = null,
+    string? phone = null,
+    string? gender = null,
+    string? identifier = null)
+    {
+        var service = _ehrFhirFactory.GetService(ehrSystem);
+        if (service == null)
+            throw new Exception($"EHR service '{ehrSystem}' not found");
+
+        return await service.SearchPatientsAsync(name, email, phone, gender, identifier);
+    }
 
     public object ParseEpicPatientXml(string xml)
     {
