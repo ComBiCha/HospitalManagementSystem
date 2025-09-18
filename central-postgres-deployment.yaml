@@ -1,0 +1,56 @@
+# central-postgres-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: central-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: central-postgres
+  template:
+    metadata:
+      labels:
+        app: central-postgres
+    spec:
+      containers:
+      - name: central-postgres
+        image: postgres:15
+        env:
+        - name: POSTGRES_DB
+          value: HMS_CentralDB
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          value: postgres123
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: central-postgres-data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: central-postgres-data
+        persistentVolumeClaim:
+          claimName: central-postgres-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: central-postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: central-postgres
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: central-postgres

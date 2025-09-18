@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seaweed-filer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seaweed-filer
+  template:
+    metadata:
+      labels:
+        app: seaweed-filer
+    spec:
+      containers:
+      - name: seaweed-filer
+        image: chrislusf/seaweedfs:latest
+        command: ["weed", "filer", "-master=seaweed-master:9333", "-port=8888", "-defaultStoreDir=/data"]
+        ports:
+        - containerPort: 8888
+        volumeMounts:
+        - name: filer-data
+          mountPath: /data
+      volumes:
+      - name: filer-data
+        persistentVolumeClaim:
+          claimName: seaweed-filer-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaweed-filer-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweed-filer
+spec:
+  ports:
+    - name: filer
+      port: 8888
+      targetPort: 8888
+  selector:
+    app: seaweed-filer

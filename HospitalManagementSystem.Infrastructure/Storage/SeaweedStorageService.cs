@@ -54,6 +54,41 @@ namespace HospitalManagementSystem.Infrastructure.Storage
             return publicBase.TrimEnd('/') + "/" + assign.Fid;
         }
 
+        public async Task<string> UploadAnyFileAsync(Stream stream, string fileName, string contentType = "application/octet-stream")
+        {
+            // 1) assign
+            var assignUri = $"{_masterUrl}/dir/assign?replication={_replication}";
+            var assign = await _http.GetFromJsonAsync<SeaweedAssignResult>(assignUri);
+            if (assign == null || string.IsNullOrEmpty(assign.Fid))
+                throw new InvalidOperationException("SeaweedFS assign failed");
+
+            // 2) upload to volume server
+            var uploadHost = assign.Url;
+            var uploadUrl = $"http://{uploadHost}/{assign.Fid}";
+            using var content = new StreamContent(stream);
+            content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            content.Headers.Add("Content-Disposition", $"attachment; filename=\"{fileName}\"");
+            var resp = await _http.PutAsync(uploadUrl, content);
+            resp.EnsureSuccessStatusCode();
+
+            // 3) return public URL (prefer assign.PublicUrl then configured PublicUrl)
+            var publicBase = !string.IsNullOrEmpty(assign.PublicUrl) ? assign.PublicUrl : _publicUrl;
+            if (string.IsNullOrEmpty(publicBase))
+                return assign.Fid;
+
+            return publicBase.TrimEnd('/') + "/" + assign.Fid;
+        }
+        public async Task<Stream?> DownloadAnyFileAsync(string fileId)
+        {
+            // fileId có thể là "4,02b1b7f36f" hoặc URL đầy đủ
+            string url = fileId.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? fileId
+                : $"http://seaweed-volume:8080/{fileId}";
+            var resp = await _http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) return null;
+            return await resp.Content.ReadAsStreamAsync();
+        }
+
         public async Task<bool> DeleteAsync(string fileId)
         {
             if (string.IsNullOrEmpty(_publicUrl)) return false;

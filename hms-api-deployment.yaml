@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hms-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hms-api
+  template:
+    metadata:
+      labels:
+        app: hms-api
+    spec:
+      containers:
+      - name: hms-api
+        image: hms-api:v3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        envFrom:
+        - configMapRef:
+            name: hms-api-config
+        - secretRef:
+            name: hms-api-secret
+        volumeMounts:
+        - name: epic-privatekey
+          mountPath: /src/privatekey.pem
+          subPath: privatekey.pem
+      volumes:
+      - name: epic-privatekey
+        secret:
+          secretName: epic-privatekey

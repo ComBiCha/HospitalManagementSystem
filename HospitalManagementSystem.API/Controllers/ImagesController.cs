@@ -121,6 +121,33 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
+        [HttpPost("upload-any")]
+        [Authorize(Roles = "Doctor")]
+        public async Task<IActionResult> UploadAnyFile([FromForm] IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+                return BadRequest("No file provided");
+
+            var fileExtension = Path.GetExtension(file.FileName);
+            var uniqueFileName = $"{Guid.NewGuid()}{fileExtension}";
+            await using var stream = file.OpenReadStream();
+            var publicUrl = await _storageService.UploadAnyFileAsync(stream, uniqueFileName, file.ContentType ?? "application/octet-stream");
+
+            return Ok(new { fileName = uniqueFileName, url = publicUrl });
+        }
+
+        [HttpGet("download-any")]
+        [Authorize(Roles = "Doctor")]
+        public async Task<IActionResult> DownloadAnyFile([FromQuery] string fileId, [FromQuery] string? fileName = null)
+        {
+            var stream = await _storageService.DownloadAnyFileAsync(fileId);
+            if (stream == null)
+                return NotFound("File not found in storage");
+
+            var downloadName = fileName ?? "downloaded_file";
+            return File(stream, "application/octet-stream", downloadName);
+        }
+
         [HttpGet("appointment/{appointmentId}")]
         [Authorize(Roles = "Doctor,Patient")]
         public async Task<ActionResult<List<ImageInfo>>> GetImagesByAppointment(int appointmentId)
@@ -199,5 +226,21 @@ namespace HospitalManagementSystem.API.Controllers
                 return StatusCode(500, "Error deleting image");
             }
         }
+
+        [HttpGet("db-file")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetDbFile([FromQuery] string fileName)
+        {
+            // Địa chỉ pvc-reader (giả sử đã port-forward hoặc có service)
+            var pvcReaderUrl = $"http://pvc-reader:8080/{fileName}";
+            using var httpClient = new HttpClient();
+            var resp = await httpClient.GetAsync(pvcReaderUrl);
+            if (!resp.IsSuccessStatusCode)
+                return NotFound("File not found");
+
+            var stream = await resp.Content.ReadAsStreamAsync();
+            return File(stream, "application/octet-stream", fileName);
+        }
+        
     }
 }

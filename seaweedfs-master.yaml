@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seaweed-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seaweed-master
+  template:
+    metadata:
+      labels:
+        app: seaweed-master
+    spec:
+      containers:
+      - name: seaweed-master
+        image: chrislusf/seaweedfs:latest
+        command: ["weed", "master", "-mdir=/data", "-port=9333"]
+        ports:
+        - containerPort: 9333
+        - containerPort: 19333
+        volumeMounts:
+        - name: master-data
+          mountPath: /data
+      volumes:
+      - name: master-data
+        persistentVolumeClaim:
+          claimName: seaweed-master-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaweed-master-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweed-master
+spec:
+  ports:
+    - name: master-http
+      port: 9333
+      targetPort: 9333
+    - name: master-grpc
+      port: 19333
+      targetPort: 19333
+  selector:
+    app: seaweed-master
