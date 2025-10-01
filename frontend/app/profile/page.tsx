@@ -48,9 +48,9 @@ export default function ProfilePage() {
         firstName: userData.firstName,
         lastName: userData.lastName,
         role: userData.role,
-        isActive: true, // API doesn't return this, assume true
-        createdAt: new Date().toISOString(), // API doesn't return this
-        updatedAt: new Date().toISOString(), // API doesn't return this
+        isActive: true, 
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(), 
         patientId: userData.patientId,
         doctorId: userData.doctorId
       })
@@ -84,8 +84,8 @@ export default function ProfilePage() {
 
   const handleUserUpdate = async (formData: UserFormData) => {
     try {
-      // Đảm bảo truyền đủ các trường required khi update user
       const fullData = {
+        username: formData.username ?? user?.username ?? '',
         email: formData.email ?? user?.email ?? '',
         firstName: formData.firstName ?? user?.firstName ?? '',
         lastName: formData.lastName ?? user?.lastName ?? '',
@@ -98,7 +98,10 @@ export default function ProfilePage() {
         prev
           ? {
               ...prev,
-              ...fullData,
+              username: fullData.username,
+              email: fullData.email,
+              firstName: fullData.firstName,
+              lastName: fullData.lastName,
               patientId: fullData.patientId === null ? undefined : fullData.patientId,
               doctorId: fullData.doctorId === null ? undefined : fullData.doctorId,
             }
@@ -116,7 +119,6 @@ export default function ProfilePage() {
     try {
       const response = await api.post('/patients', formData)
       setPatient(response.data)
-      // Update user.patientId in DB
       if (user) {
         await api.put(`/users/${user.id}`, { patientId: response.data.id })
         setUser((prev: User | null) => prev ? { ...prev, patientId: response.data.id } : null)
@@ -132,7 +134,6 @@ export default function ProfilePage() {
   const handlePatientUpdate = async (formData: PatientFormData) => {
     if (!patient) return
     try {
-      // Đảm bảo truyền đủ trường id khi update patient
       const fullData = { id: patient.id, ...formData }
       const response = await api.put(`/patients/${patient.id}`, fullData)
       setPatient(response.data)
@@ -148,7 +149,12 @@ export default function ProfilePage() {
     if (!patient) return
     
     try {
-      const response = await api.post(`/patients/${patient.id}/identifiers`, formData)
+      const payload = {
+        EHRSystem: formData.ehrSystem,
+        ExternalId: formData.externalId,
+        IdentifierType: formData.identifierType
+      }
+      const response = await api.post(`/patients/${patient.id}/identifiers`, payload)
       setIdentifiers([...identifiers, response.data])
       toast.success('Identifier added successfully!')
     } catch (error) {
@@ -160,7 +166,14 @@ export default function ProfilePage() {
 
   const handleIdentifierUpdate = async (id: number, formData: PatientIdentifierFormData) => {
     try {
-      const response = await api.put(`/patients/identifiers/${id}`, formData)
+      const payload = {
+        Id: id,
+        EHRSystem: formData.ehrSystem,
+        ExternalId: formData.externalId,
+        IdentifierType: formData.identifierType,
+        PatientId: patient?.id || 0  
+      }
+      const response = await api.put(`/patients/identifiers/${id}`, payload)
       setIdentifiers(identifiers.map(item => 
         item.id === id ? response.data : item
       ))

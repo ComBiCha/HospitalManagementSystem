@@ -129,47 +129,37 @@ namespace HospitalManagementSystem.API.Controllers
         /// <param name="request">Updated user data</param>
         /// <returns>Updated user information</returns>
         [HttpPut("{id}")]
-        public async Task<ActionResult<UserInfo>> UpdateUser(int id, UpdateUserRequest request)
+        public async Task<ActionResult<UserInfo>> UpdateUser(int id, [FromBody] UpdateUserRequest request)
         {
             try
             {
-                if (!ModelState.IsValid)
+                var user = await _authRepository.GetUserByIdAsync(id);
+                if (user == null) return NotFound();
+
+                // Map ALL fields from request to user entity
+                user.Username = request.Username ?? user.Username;
+                user.Email = request.Email ?? user.Email;
+                user.FirstName = request.FirstName ?? user.FirstName;
+                user.LastName = request.LastName ?? user.LastName;
+                user.Role = request.Role ?? user.Role;
+                user.PatientId = request.PatientId;
+                user.DoctorId = request.DoctorId;
+                user.IsActive = request.IsActive ?? user.IsActive;
+                user.UpdatedAt = DateTime.UtcNow;
+
+                await _authRepository.UpdateUserAsync(user);
+
+                return Ok(new UserInfo
                 {
-                    return BadRequest(ModelState);
-                }
-
-                var existingUser = await _authRepository.GetUserByIdAsync(id);
-                if (existingUser == null)
-                {
-                    return NotFound($"User with ID {id} not found");
-                }
-
-                existingUser.Email = request.Email;
-                existingUser.FirstName = request.FirstName;
-                existingUser.LastName = request.LastName;
-                existingUser.Role = request.Role;
-                existingUser.PatientId = request.PatientId;
-                existingUser.DoctorId = request.DoctorId;
-
-                var updatedUser = await _authRepository.UpdateUserAsync(existingUser);
-                if (updatedUser == null)
-                {
-                    return StatusCode(500, "Failed to update user");
-                }
-
-                var userInfo = new UserInfo
-                {
-                    Id = updatedUser.Id,
-                    Username = updatedUser.Username,
-                    Email = updatedUser.Email,
-                    FirstName = updatedUser.FirstName,
-                    LastName = updatedUser.LastName,
-                    Role = updatedUser.Role,
-                    PatientId = updatedUser.PatientId,
-                    DoctorId = updatedUser.DoctorId
-                };
-
-                return Ok(userInfo);
+                    Id = user.Id,
+                    Username = user.Username,
+                    Email = user.Email,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Role = user.Role,
+                    PatientId = user.PatientId,
+                    DoctorId = user.DoctorId
+                });
             }
             catch (Exception ex)
             {
@@ -206,20 +196,13 @@ namespace HospitalManagementSystem.API.Controllers
 
     public class UpdateUserRequest
     {
-        [Required]
-        [EmailAddress]
-        public string Email { get; set; } = string.Empty;
-        
-        [Required]
-        public string FirstName { get; set; } = string.Empty;
-        
-        [Required]
-        public string LastName { get; set; } = string.Empty;
-        
-        [Required]
-        public string Role { get; set; } = string.Empty;
-        
+        public string? Username { get; set; }
+        public string? Email { get; set; }
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Role { get; set; }
         public int? PatientId { get; set; }
         public int? DoctorId { get; set; }
+        public bool? IsActive { get; set; }
     }
 }

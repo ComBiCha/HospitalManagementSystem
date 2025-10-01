@@ -17,5 +17,8 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<IEnumerable<Patient>> GetRecentPatientsAsync(int count = 50);
         Task<int> GetPatientCountAsync();
         Task<(List<Patient> Data, string? NextLink, string? PreviousLink)> GetPatientsWithNextLinkAsync(int? lastId = null, int pageSize = 20, string baseUrl = "");
+        Task<PatientIdentifiers> AddPatientIdentifierAsync(PatientIdentifiers identifier);
+        Task<PatientIdentifiers?> UpdatePatientIdentifierAsync(PatientIdentifiers identifier);
+        Task<bool> DeletePatientIdentifierAsync(int identifierId);
     }
 }

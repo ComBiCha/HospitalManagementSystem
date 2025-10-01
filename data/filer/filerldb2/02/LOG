@@ -123,3 +123,5 @@
 00:46:18.779784 version@stat F·[] S·0B[] Sc·[]
 00:46:18.782345 db@janitor F·2 G·0
 00:46:18.782456 db@open done T·3.857583ms
+10:00:28.175756 db@close closing
+10:00:28.176530 db@close done T·773.625µs

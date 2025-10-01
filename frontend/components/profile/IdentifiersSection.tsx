@@ -10,11 +10,25 @@ interface IdentifiersSectionProps {
   onDelete: (id: number) => Promise<void>
 }
 
+// Helper function to convert EHR System number to name
+const getEHRSystemName = (ehrSystem: string | number): string => {
+  const systemMap: Record<number, string> = {
+    0: 'Epic',
+    1: 'Cerner',
+    2: 'MEDITECH',
+    3: 'Allscripts',
+    99: 'Other'
+  }
+  
+  const systemNumber = typeof ehrSystem === 'number' ? ehrSystem : parseInt(ehrSystem, 10)
+  return systemMap[systemNumber] || `Unknown (${ehrSystem})`
+}
+
 export default function IdentifiersSection({ identifiers, onAdd, onUpdate, onDelete }: IdentifiersSectionProps) {
   const [isAdding, setIsAdding] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [formData, setFormData] = useState<PatientIdentifierFormData>({
-    ehrSystem: '',
+    ehrSystem: NaN,
     externalId: '',
     identifierType: ''
   })
@@ -24,7 +38,7 @@ export default function IdentifiersSection({ identifiers, onAdd, onUpdate, onDel
     setIsLoading(true)
     try {
       await onAdd(formData)
-      setFormData({ ehrSystem: '', externalId: '', identifierType: '' })
+      setFormData({ ehrSystem: NaN, externalId: '', identifierType: '' })
       setIsAdding(false)
     } catch (error) {
       console.error('Failed to add identifier:', error)
@@ -61,7 +75,7 @@ export default function IdentifiersSection({ identifiers, onAdd, onUpdate, onDel
   const startEdit = (identifier: PatientIdentifier) => {
     setEditingId(identifier.id)
     setFormData({
-      ehrSystem: identifier.ehrSystem,
+      ehrSystem: typeof identifier.ehrSystem === 'number' ? identifier.ehrSystem : parseInt(identifier.ehrSystem, 10),
       externalId: identifier.externalId,
       identifierType: identifier.identifierType
     })
@@ -69,12 +83,12 @@ export default function IdentifiersSection({ identifiers, onAdd, onUpdate, onDel
 
   const cancelEdit = () => {
     setEditingId(null)
-    setFormData({ ehrSystem: '', externalId: '', identifierType: '' })
+    setFormData({ ehrSystem: NaN, externalId: '', identifierType: '' })
   }
 
   const cancelAdd = () => {
     setIsAdding(false)
-    setFormData({ ehrSystem: '', externalId: '', identifierType: '' })
+    setFormData({ ehrSystem: NaN, externalId: '', identifierType: '' })
   }
 
   return (
@@ -101,7 +115,7 @@ export default function IdentifiersSection({ identifiers, onAdd, onUpdate, onDel
                 EHR System
               </label>
               <select
-                value={formData.ehrSystem}
+                value={isNaN(formData.ehrSystem) ? '' : formData.ehrSystem}
                 onChange={(e) => setFormData({ ...formData, ehrSystem: Number(e.target.value) })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -153,7 +167,7 @@ export default function IdentifiersSection({ identifiers, onAdd, onUpdate, onDel
             </button>
             <button
               onClick={handleAdd}
-              disabled={isLoading || !String(formData.ehrSystem) || !formData.externalId || !formData.identifierType}
+              disabled={isLoading || isNaN(formData.ehrSystem) || !formData.externalId || !formData.identifierType}
               className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
             >
               {isLoading ? 'Adding...' : 'Add Identifier'}
@@ -185,15 +199,15 @@ export default function IdentifiersSection({ identifiers, onAdd, onUpdate, onDel
                         EHR System
                       </label>
                       <select
-                        value={formData.ehrSystem}
-                        onChange={(e) => setFormData({ ...formData, ehrSystem: e.target.value })}
+                        value={isNaN(formData.ehrSystem) ? '' : formData.ehrSystem}
+                        onChange={(e) => setFormData({ ...formData, ehrSystem: Number(e.target.value) })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        <option value="Epic">Epic</option>
-                        <option value="Cerner">Cerner</option>
-                        <option value="Meditech">MEDITECH</option>
-                        <option value="Allscripts">Allscripts</option>
-                        <option value="Other">Other</option>
+                        <option value={0}>Epic</option>
+                        <option value={1}>Cerner</option>
+                        <option value={2}>MEDITECH</option>
+                        <option value={3}>Allscripts</option>
+                        <option value={99}>Other</option>
                       </select>
                     </div>
                     <div>
@@ -246,7 +260,7 @@ export default function IdentifiersSection({ identifiers, onAdd, onUpdate, onDel
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1">
                     <div>
                       <span className="text-sm font-medium text-gray-700">EHR System:</span>
-                      <p className="text-gray-900">{identifier.ehrSystem}</p>
+                      <p className="text-gray-900">{getEHRSystemName(identifier.ehrSystem)}</p>
                     </div>
                     <div>
                       <span className="text-sm font-medium text-gray-700">External ID:</span>

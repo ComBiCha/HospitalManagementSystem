@@ -250,6 +250,38 @@ namespace HospitalManagementSystem.Infrastructure.Caching
             return await _repository.GetPatientIdentifiersAsync(patientId);
         }
 
+        public async Task<PatientIdentifiers> AddPatientIdentifierAsync(PatientIdentifiers identifier)
+        {
+            var created = await _repository.AddPatientIdentifierAsync(identifier);
+            // Invalidate cache liên quan đến patient
+            var patientCacheKey = CacheKeyGenerator.PatientById(identifier.PatientId);
+            await _cacheService.RemoveAsync(patientCacheKey);
+            _logger.LogDebug("PatientIdentifier added and patient cache invalidated: {Id}", identifier.Id);
+            return created;
+        }
+
+        public async Task<PatientIdentifiers?> UpdatePatientIdentifierAsync(PatientIdentifiers identifier)
+        {
+            var updated = await _repository.UpdatePatientIdentifierAsync(identifier);
+            if (updated != null)
+            {
+                var patientCacheKey = CacheKeyGenerator.PatientById(identifier.PatientId);
+                await _cacheService.RemoveAsync(patientCacheKey);
+                _logger.LogDebug("PatientIdentifier updated and patient cache invalidated: {Id}", identifier.Id);
+            }
+            return updated;
+        }
+
+        public async Task<bool> DeletePatientIdentifierAsync(int identifierId)
+        {
+            var result = await _repository.DeletePatientIdentifierAsync(identifierId);
+            if (result)
+            {
+                _logger.LogDebug("PatientIdentifier deleted: {Id}", identifierId);
+            }
+            return result;
+        }
+
         private async Task InvalidateListCaches()
         {
             await _cacheService.RemovePatternAsync("patient:all:*");

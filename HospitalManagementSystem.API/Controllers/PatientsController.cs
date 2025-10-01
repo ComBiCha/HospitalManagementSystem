@@ -355,11 +355,117 @@ namespace HospitalManagementSystem.API.Controllers
 
             return Ok(identifiers.Select(x => new
             {
+                x.Id,
+                x.PatientId,
                 x.EHRSystem,
                 x.ExternalId,
                 x.IdentifierType,
-                x.IsActive
+                x.IsActive,
+                x.CreatedAt,
+                x.UpdatedAt
             }));
+        }
+        [HttpPost("{id}/identifiers")]
+        public async Task<IActionResult> AddPatientIdentifier(int id, [FromBody] PatientIdentifiers identifier)
+        {
+            try
+            {
+                var patient = await _patientRepository.GetPatientByIdAsync(id);
+                if (patient == null) return NotFound();
+
+                identifier.PatientId = id;
+                identifier.CreatedAt = DateTime.UtcNow;
+                identifier.UpdatedAt = DateTime.UtcNow;
+                
+                var created = await _patientService.AddPatientIdentifierAsync(identifier);
+                
+                // Return DTO instead of entity to avoid circular reference
+                return CreatedAtAction(nameof(GetPatientIdentifiers), new { id }, new
+                {
+                    created.Id,
+                    created.PatientId,
+                    created.EHRSystem,
+                    created.ExternalId,
+                    created.IdentifierType,
+                    created.IsActive,
+                    created.CreatedAt,
+                    created.UpdatedAt
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error adding patient identifier for patient {PatientId}", id);
+                return StatusCode(500, new { message = "Error adding patient identifier", error = ex.Message });
+            }
+        }
+        [HttpPut("identifiers/{identifierId}")]
+        public async Task<IActionResult> UpdatePatientIdentifier(int identifierId, [FromBody] PatientIdentifiers identifier)
+        {
+            try
+            {
+                if (identifierId != identifier.Id)
+                {
+                    return BadRequest("ID mismatch");
+                }
+                
+                // Fetch existing identifier to preserve PatientId  
+                var existing = await _patientService.GetPatientIdentifiersAsync(identifier.PatientId);
+                var existingIdentifier = existing?.FirstOrDefault(x => x.Id == identifierId);
+                
+                if (existingIdentifier == null)
+                {
+                    return NotFound();
+                }
+                
+                // Update only allowed fields, keep PatientId unchanged
+                identifier.PatientId = existingIdentifier.PatientId;
+                identifier.CreatedAt = existingIdentifier.CreatedAt;
+                identifier.UpdatedAt = DateTime.UtcNow;
+                
+                var updated = await _patientService.UpdatePatientIdentifierAsync(identifier);
+                
+                if (updated == null)
+                {
+                    return NotFound();
+                }
+                
+                // Return DTO instead of entity to avoid circular reference
+                return Ok(new
+                {
+                    updated.Id,
+                    updated.PatientId,
+                    updated.EHRSystem,
+                    updated.ExternalId,
+                    updated.IdentifierType,
+                    updated.IsActive,
+                    updated.CreatedAt,
+                    updated.UpdatedAt
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating patient identifier: {IdentifierId}", identifierId);
+                return StatusCode(500, new { message = "Error updating patient identifier", error = ex.Message });
+            }
+        }
+        
+        [HttpDelete("identifiers/{identifierId}")]
+        public async Task<IActionResult> DeletePatientIdentifier(int identifierId)
+        {
+            try
+            {
+                var result = await _patientService.DeletePatientIdentifierAsync(identifierId);
+                if (!result)
+                {
+                    return NotFound();
+                }
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting patient identifier: {IdentifierId}", identifierId);
+                return StatusCode(500, new { message = "Error deleting patient identifier", error = ex.Message });
+            }
         }
         [HttpGet("{id}/ehr")]
         public async Task<IActionResult> GetPatientInfoFromEhr(int id, [FromQuery] EHRSystem ehrSystem = EHRSystem.Epic)

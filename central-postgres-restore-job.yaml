@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: central-postgres-restore
+spec:
+  template:
+    spec:
+      containers:
+      - name: restore
+        image: postgres:17
+        env:
+        - name: PGPASSWORD
+          value: "postgres123"
+        command:
+        - bash
+        - -c
+        - |
+          apt-get update && apt-get install -y curl
+          curl -o /restore/restore.sql http://seaweed-filer:8888/backup/backup_20250925_063614.sql
+          psql -h hms-postgres-postgresql-ha-pgpool.default.svc.cluster.local -U postgres HMS_CentralDB < /restore/restore.sql
+        volumeMounts:
+        - name: restore-volume
+          mountPath: /restore
+      restartPolicy: OnFailure
+      volumes:
+      - name: restore-volume
+        emptyDir: {}

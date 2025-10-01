@@ -149,7 +149,7 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
                 await context.SaveChangesAsync();
 
                 var emailChannel = scope.ServiceProvider.GetServices<INotificationChannel>()
-                    .FirstOrDefault(c => c.ChannelType == "Email");
+                    .FirstOrDefault(c => c.ChannelType == NotificationChannels.Email);
 
                 if (emailChannel != null)
                 {
@@ -165,8 +165,8 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
                     _logger.LogWarning("No EmailNotificationChannel found in DI");
                 }
 
-                _logger.LogInformation("📧 Email to Patient {PatientName}: {Content}",
-                    notification.PatientName, notification.Content);
+                _logger.LogInformation("📧 Email to Patient UserId {UserId}: {Content}",
+                    notification.UserId, notification.Content);
             }
         }
 
@@ -205,7 +205,7 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
                 await context.SaveChangesAsync();
 
                 var emailChannel = scope.ServiceProvider.GetServices<INotificationChannel>()
-                    .FirstOrDefault(c => c.ChannelType == "Email");
+                    .FirstOrDefault(c => c.ChannelType == NotificationChannels.Email);
 
                 if (emailChannel != null)
                 {
@@ -231,28 +231,32 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
         {
             var patient = patientRepository.GetPatientByIdAsync(data.PatientId).Result;
             var recipientEmail = patient?.Email ?? "patient@email.com";
+            
+            // Get User.Id from Patient (find user with matching PatientId)
+            var user = _serviceProvider.CreateScope().ServiceProvider
+                .GetRequiredService<HospitalDbContext>()
+                .Users.FirstOrDefault(u => u.PatientId == data.PatientId);
+            
+            var userId = user?.Id ?? 0; // Fallback to 0 if user not found
+            
             var appointmentDate = data.Date.ToString("yyyy-MM-dd HH:mm");
             var subject = "Appointment Confirmation";
             var content = $"Your appointment with Dr. {data.DoctorName} is scheduled for {appointmentDate}.";
 
             return new Notification
             {
-                UserId = data.PatientId.ToString(),
+                UserId = userId,
                 Recipient = recipientEmail,
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
                 Status = NotificationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
-                AppointmentId = data.AppointmentId,
-                Message = content,
-                Type = "Email",
-                RecipientEmail = recipientEmail,
-                PatientName = data.PatientName,
-                DoctorName = data.DoctorName,
                 IsRead = false,
+                AppointmentDate = data.Date,
                 Metadata = JsonConvert.SerializeObject(new
                 {
+                    PatientId = data.PatientId,
                     AppointmentDate = data.Date,
                     DoctorSpecialty = data.DoctorSpecialty,
                     EventType = "appointment.created"
@@ -264,28 +268,31 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
         {
             var patient = patientRepository.GetPatientByIdAsync(data.PatientId).Result;
             var recipientEmail = patient?.Email ?? "patient@email.com";
+            
+            var user = _serviceProvider.CreateScope().ServiceProvider
+                .GetRequiredService<HospitalDbContext>()
+                .Users.FirstOrDefault(u => u.PatientId == data.PatientId);
+            
+            var userId = user?.Id ?? 0;
+            
             var appointmentDate = data.Date.ToString("yyyy-MM-dd HH:mm");
             var subject = "Appointment Updated";
             var content = $"Your appointment with Dr. {data.DoctorName} has been updated. New date: {appointmentDate}.";
 
             return new Notification
             {
-                UserId = data.PatientId.ToString(),
+                UserId = userId,
                 Recipient = recipientEmail,
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
                 Status = NotificationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
-                AppointmentId = data.AppointmentId,
-                Message = content,
-                Type = "Email",
-                RecipientEmail = recipientEmail,
-                PatientName = data.PatientName,
-                DoctorName = data.DoctorName,
                 IsRead = false,
+                AppointmentDate = data.Date,
                 Metadata = JsonConvert.SerializeObject(new
                 {
+                    PatientId = data.PatientId,
                     AppointmentDate = data.Date,
                     DoctorSpecialty = data.DoctorSpecialty,
                     EventType = "appointment.updated",
@@ -298,27 +305,30 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
         {
             var patient = patientRepository.GetPatientByIdAsync(data.PatientId).Result;
             var recipientEmail = patient?.Email ?? "patient@email.com";
+            
+            var user = _serviceProvider.CreateScope().ServiceProvider
+                .GetRequiredService<HospitalDbContext>()
+                .Users.FirstOrDefault(u => u.PatientId == data.PatientId);
+            
+            var userId = user?.Id ?? 0;
+            
             var subject = "Appointment Cancelled";
             var content = $"Your appointment with Dr. {data.DoctorName} has been cancelled.";
 
             return new Notification
             {
-                UserId = data.PatientId.ToString(),
+                UserId = userId,
                 Recipient = recipientEmail,
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
                 Status = NotificationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
-                AppointmentId = data.AppointmentId,
-                Message = content,
-                Type = "Email",
-                RecipientEmail = recipientEmail,
-                PatientName = data.PatientName,
-                DoctorName = data.DoctorName,
                 IsRead = false,
+                AppointmentDate = data.Date,
                 Metadata = JsonConvert.SerializeObject(new
                 {
+                    PatientId = data.PatientId,
                     AppointmentDate = data.Date,
                     DoctorSpecialty = data.DoctorSpecialty,
                     EventType = "appointment.cancelled",
@@ -337,16 +347,13 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
 
             return new Notification
             {
-                UserId = data.PatientId.ToString(),
+                UserId = data.PatientId,
                 Recipient = "user@email.com", // TODO: lấy email thực tế từ patient/user nếu cần
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
                 Status = NotificationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
-                Message = content,
-                Type = "Email",
-                RecipientEmail = "user@email.com",
                 IsRead = false,
                 Metadata = JsonConvert.SerializeObject(new
                 {
@@ -367,16 +374,13 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
             var content = $"Your payment of {data.Amount} for billing #{data.BillingId} was processed successfully using {data.PaymentMethod}.";
             return new Notification
             {
-                UserId = data.PatientId.ToString(),
+                UserId = data.PatientId,
                 Recipient = "user@email.com",
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
                 Status = NotificationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
-                Message = content,
-                Type = "Email",
-                RecipientEmail = "user@email.com",
                 IsRead = false,
                 Metadata = JsonConvert.SerializeObject(new
                 {
@@ -398,16 +402,13 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
             var content = $"Your payment of {data.Amount} for billing #{data.BillingId} failed. Reason: {data.FailureReason}";
             return new Notification
             {
-                UserId = data.PatientId.ToString(),
+                UserId = data.PatientId,
                 Recipient = "user@email.com",
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
                 Status = NotificationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
-                Message = content,
-                Type = "Email",
-                RecipientEmail = "user@email.com",
                 IsRead = false,
                 Metadata = JsonConvert.SerializeObject(new
                 {
@@ -429,16 +430,13 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
             var content = $"Your refund of {data.RefundAmount} for billing #{data.BillingId} has been processed.";
             return new Notification
             {
-                UserId = data.PatientId.ToString(),
+                UserId = data.PatientId,
                 Recipient = "user@email.com",
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
                 Status = NotificationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
-                Message = content,
-                Type = "Email",
-                RecipientEmail = "user@email.com",
                 IsRead = false,
                 Metadata = JsonConvert.SerializeObject(new
                 {

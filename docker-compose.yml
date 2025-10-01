@@ -217,25 +217,25 @@ services:
       - hms-network
 
   # PostgreSQL for Notification Service
-  notification-postgres:
-    image: postgres:15
-    container_name: hms-notification-postgres
-    environment:
-      POSTGRES_DB: HMS_NotificationDB
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
-    ports:
-      - "5435:5432"
-    volumes:
-      - notification_postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - hms-network
+  # notification-postgres:
+  #   image: postgres:15
+  #   container_name: hms-notification-postgres
+  #   environment:
+  #     POSTGRES_DB: HMS_NotificationDB
+  #     POSTGRES_USER: postgres
+  #     POSTGRES_PASSWORD: postgres123
+  #   ports:
+  #     - "5435:5432"
+  #   volumes:
+  #     - notification_postgres_data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U postgres"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - hms-network
 
   # api-gateway:
   #   build:
@@ -579,7 +579,7 @@ volumes:
     driver: local
   minio_data:
     driver: local
-  redis_data:  # NEW
+  redis_data:  
     driver: local
 
 networks:

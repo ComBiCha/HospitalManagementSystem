@@ -116,4 +116,18 @@ public class PatientService
             Address = address
         };
     }
+    public async Task<PatientIdentifiers> AddPatientIdentifierAsync(PatientIdentifiers identifier)
+    {
+        return await _patientRepository.AddPatientIdentifierAsync(identifier);
+    }
+
+    public async Task<PatientIdentifiers?> UpdatePatientIdentifierAsync(PatientIdentifiers identifier)
+    {
+        return await _patientRepository.UpdatePatientIdentifierAsync(identifier);
+    }
+
+    public async Task<bool> DeletePatientIdentifierAsync(int identifierId)
+    {
+        return await _patientRepository.DeletePatientIdentifierAsync(identifierId);
+    }
 }

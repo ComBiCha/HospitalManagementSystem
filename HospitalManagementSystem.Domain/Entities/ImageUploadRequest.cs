@@ -27,6 +27,9 @@ namespace HospitalManagementSystem.Domain.Entities
         public string ImageType { get; set; } = string.Empty;
         public DateTime UploadedAt { get; set; }
         public string MinioObjectKey { get; set; } = string.Empty;
+        public Appointment Appointment { get; set; } = null!;
+        public Doctor Doctor { get; set; } = null!;
+        public Patient Patient { get; set; } = null!;
     }
 
     public class ImageDownloadResponse

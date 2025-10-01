@@ -21,6 +21,16 @@ spec:
         volumeMounts:
         - name: redis-data
           mountPath: /data
+        livenessProbe:
+          exec:
+            command:
+              - redis-cli
+              - -a
+              - redis123
+              - ping
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
       volumes:
       - name: redis-data
         persistentVolumeClaim:

@@ -11,6 +11,14 @@ const nextConfig = {
     config.resolve.alias['@'] = path.resolve(__dirname);
     return config;
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://hms-api-service/api/:path*',
+      },
+    ];
+  },
 }
 
 module.exports = nextConfig

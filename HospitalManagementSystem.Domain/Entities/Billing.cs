@@ -41,9 +41,11 @@ namespace HospitalManagementSystem.Domain.Entities
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-        
+
         public string BillingType { get; set; } = string.Empty;
         public string? InsuranceNumber { get; set; }
         public string? CompanyId { get; set; }
+        public Appointment Appointment { get; set; } = null!;
+        public Patient Patient { get; set; } = null!;
     }
 }

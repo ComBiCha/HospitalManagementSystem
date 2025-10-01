@@ -10,7 +10,7 @@ namespace HospitalManagementSystem.Domain.Entities
         [Required]
         public int PatientId { get; set; }
         public Patient? Patient { get; set; }
-        [Required, MaxLength(50)]
+        [Required]
         public EHRSystem EHRSystem { get; set; } = EHRSystem.Epic;
         [Required, MaxLength(100)]
         public string ExternalId { get; set; } = string.Empty;

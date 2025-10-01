@@ -9,13 +9,15 @@ namespace HospitalManagementSystem.Infrastructure.Dicom
 {
     public class DicomService : IDicomService
     {
-        private readonly string orthancUrl = "http://hospital_management_system-orthanc-1:8042/instances";
+        // Địa chỉ Orthanc nội bộ trong AKS
+        private readonly string orthancBaseUrl = "http://orthanc-service:8042";
         private readonly string username = "orthanc";
         private readonly string password = "orthanc";
-        private readonly string patientURL = "http://hospital_management_system-orthanc-1:8042/patients";
-        private readonly string studyURL = "http://hospital_management_system-orthanc-1:8042/studies";
-        private readonly string seriesURL = "http://hospital_management_system-orthanc-1:8042/series";
-        private readonly string instancesURL = "http://hospital_management_system-orthanc-1:8042/instances";
+        private string patientURL => $"{orthancBaseUrl}/patients";
+        private string studyURL => $"{orthancBaseUrl}/studies";
+        private string seriesURL => $"{orthancBaseUrl}/series";
+        private string instancesURL => $"{orthancBaseUrl}/instances";
+        private string orthancUrl => $"{orthancBaseUrl}/instances";
 
         private HttpClient CreateHttpClient()
         {

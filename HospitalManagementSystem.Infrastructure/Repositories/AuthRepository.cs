@@ -84,6 +84,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                     return null;
                 }
 
+                existingUser.Username = user.Username;
                 existingUser.Email = user.Email;
                 existingUser.FirstName = user.FirstName;
                 existingUser.LastName = user.LastName;

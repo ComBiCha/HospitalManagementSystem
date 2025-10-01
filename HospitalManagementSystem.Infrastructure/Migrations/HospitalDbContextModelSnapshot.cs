@@ -146,6 +146,10 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("CreatedAt");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -164,12 +168,64 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("Specialty");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("Status");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("UpdatedAt");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Email")
                         .IsUnique();
 
                     b.ToTable("Doctors");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.DoctorShift", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("Id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("CreatedAt");
+
+                    b.Property<int>("DayOfWeek")
+                        .HasColumnType("integer")
+                        .HasColumnName("DayOfWeek");
+
+                    b.Property<int>("DoctorId")
+                        .HasColumnType("integer")
+                        .HasColumnName("DoctorId");
+
+                    b.Property<TimeSpan>("EndTime")
+                        .HasColumnType("interval")
+                        .HasColumnName("EndTime");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("IsActive");
+
+                    b.Property<TimeSpan>("StartTime")
+                        .HasColumnType("interval")
+                        .HasColumnName("StartTime");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("UpdatedAt");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DoctorId");
+
+                    b.ToTable("DoctorShifts");
                 });
 
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ImageInfo", b =>
@@ -246,9 +302,6 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                     b.Property<DateTime?>("AppointmentDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int?>("AppointmentId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("ChannelType")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -263,10 +316,6 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<string>("DoctorName")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
                     b.Property<string>("ErrorMessage")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
@@ -276,22 +325,11 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
 
-                    b.Property<string>("Message")
-                        .HasColumnType("text");
-
                     b.Property<string>("Metadata")
                         .HasColumnType("jsonb");
 
-                    b.Property<string>("PatientName")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
                     b.Property<string>("Recipient")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<string>("RecipientEmail")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
@@ -315,22 +353,14 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
-                    b.Property<string>("Type")
+                    b.Property<int>("UserId")
                         .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("AppointmentDate")
                         .HasDatabaseName("IX_Notifications_AppointmentDate");
-
-                    b.HasIndex("AppointmentId")
-                        .HasDatabaseName("IX_Notifications_AppointmentId");
 
                     b.HasIndex("ChannelType")
                         .HasDatabaseName("IX_Notifications_ChannelType");
@@ -349,9 +379,6 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
 
                     b.HasIndex("UserId")
                         .HasDatabaseName("IX_Notifications_UserId");
-
-                    b.HasIndex("AppointmentId", "Status")
-                        .HasDatabaseName("IX_Notifications_AppointmentId_Status");
 
                     b.HasIndex("ChannelType", "Status")
                         .HasDatabaseName("IX_Notifications_ChannelType_Status");
@@ -412,7 +439,6 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("EHRSystem")
-                        .HasMaxLength(50)
                         .HasColumnType("integer");
 
                     b.Property<string>("ExternalId")
@@ -542,8 +568,12 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DoctorId");
+
                     b.HasIndex("Email")
                         .IsUnique();
+
+                    b.HasIndex("PatientId");
 
                     b.HasIndex("Username")
                         .IsUnique();
@@ -566,6 +596,93 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.Appointment", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Doctor", "Doctor")
+                        .WithMany()
+                        .HasForeignKey("DoctorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Doctor");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.Billing", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Appointment", "Appointment")
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Appointment");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.DoctorShift", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Doctor", "Doctor")
+                        .WithMany()
+                        .HasForeignKey("DoctorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Doctor");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ImageInfo", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Appointment", "Appointment")
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Doctor", "Doctor")
+                        .WithMany()
+                        .HasForeignKey("DoctorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Appointment");
+
+                    b.Navigation("Doctor");
+
+                    b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.Notification", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.PatientIdentifiers", b =>
                 {
                     b.HasOne("HospitalManagementSystem.Domain.Entities.Patient", "Patient")
@@ -586,6 +703,21 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.User", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Doctor", "Doctor")
+                        .WithMany()
+                        .HasForeignKey("DoctorId");
+
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId");
+
+                    b.Navigation("Doctor");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.Patient", b =>

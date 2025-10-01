@@ -73,6 +73,7 @@ builder.Services.AddScoped<IDoctorRepository, DoctorRepository>();
 builder.Services.AddHttpClient<IStorageService, SeaweedStorageService>();
 builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
 builder.Services.AddScoped<IBillingRepository, BillingRepository>();
+builder.Services.AddScoped<IDoctorShiftRepository, DoctorShiftRepository>();
 
 builder.Services.AddHostedService<RabbitMQConsumerService>();
 

@@ -195,5 +195,33 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
 
             return (patients, nextLink, previousLink);
         }
+
+        public async Task<PatientIdentifiers> AddPatientIdentifierAsync(PatientIdentifiers identifier)
+        {
+            _context.PatientIdentifiers.Add(identifier);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("PatientIdentifier added: {Id}", identifier.Id);
+            return identifier;
+        }
+
+        public async Task<PatientIdentifiers?> UpdatePatientIdentifierAsync(PatientIdentifiers identifier)
+        {
+            var existing = await _context.PatientIdentifiers.FindAsync(identifier.Id);
+            if (existing == null) return null;
+            _context.Entry(existing).CurrentValues.SetValues(identifier);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("PatientIdentifier updated: {Id}", identifier.Id);
+            return existing;
+        }
+
+        public async Task<bool> DeletePatientIdentifierAsync(int identifierId)
+        {
+            var identifier = await _context.PatientIdentifiers.FindAsync(identifierId);
+            if (identifier == null) return false;
+            _context.PatientIdentifiers.Remove(identifier);
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("PatientIdentifier deleted: {Id}", identifierId);
+            return true;
+        }
     }
 }

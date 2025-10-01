@@ -1,7 +1,10 @@
 import axios from 'axios'
 
 // API URL configuration
-const API_URL = 'http://85.211.170.104/api'
+// Sử dụng /api để Next.js proxy đến backend service
+const API_URL = typeof window === 'undefined' 
+  ? 'http://hms-api-service/api'  // Server-side: gọi trực tiếp service
+  : '/api'  // Client-side: qua Next.js proxy
 
 // Debug logging
 console.log('🔧 API Configuration:', {
@@ -17,12 +20,7 @@ export const api = axios.create({
   timeout: 10000, // 10 seconds timeout
 })
 
-// Debug logging
-console.log('🔧 API Configuration:', {
-  NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
-  API_URL: API_URL,
-  NODE_ENV: process.env.NODE_ENV
-})
+
 
 // Request interceptor to add auth token
 api.interceptors.request.use(

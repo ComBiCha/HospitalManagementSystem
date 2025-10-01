@@ -1,11 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import Header from '../components/Header'
-import Hero from '../components/Hero'
-import Features from '../components/Features'
-import Footer from '../components/Footer'
-import AuthModal from '../components/AuthModal'
+import Header from '@/components/Header'
+import Hero from '@/components/Hero'
+import Features from '@/components/Features'
+import Footer from '@/components/Footer'
+import AuthModal from '@/components/AuthModal'
 
 export default function Home() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)

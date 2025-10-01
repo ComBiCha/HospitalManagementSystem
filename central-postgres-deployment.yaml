@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: central-postgres
-        image: postgres:15
+        image: sangrk/postgres-pgbackrest:15
         env:
         - name: POSTGRES_DB
           value: HMS_CentralDB
@@ -23,15 +23,29 @@ spec:
           value: postgres
         - name: POSTGRES_PASSWORD
           value: postgres123
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_INITDB_ARGS
+          value: "--wal-level=replica --archive-mode=on --archive-command='pgbackrest --stanza=central archive-push %p'"
         ports:
         - containerPort: 5432
         volumeMounts:
         - name: central-postgres-data
           mountPath: /var/lib/postgresql/data
+        - name: backup-volume
+          mountPath: /backup
+        - name: pgbackrest-config
+          mountPath: /etc/pgbackrest
       volumes:
       - name: central-postgres-data
         persistentVolumeClaim:
           claimName: central-postgres-pvc
+      - name: backup-volume
+        persistentVolumeClaim:
+          claimName: seaweed-filer-pvc
+      - name: pgbackrest-config
+        configMap:
+          name: pgbackrest-config
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

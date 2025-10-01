@@ -20,3 +20,4 @@ if (!fs.existsSync(publicDir)) {
 
 fs.writeFileSync(path.join(publicDir, 'env.js'), envScript)
 console.log('✅ Environment variables injected:', { apiUrl })
+

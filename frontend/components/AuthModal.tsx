@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { X, Eye, EyeOff, Mail, Lock, User, Phone } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useRouter } from 'next/navigation'
 import { authApi, LoginRequest, RegisterRequest } from '../lib/api'
 
 interface AuthModalProps {
@@ -16,6 +17,7 @@ export default function AuthModal({ isOpen, onClose, defaultMode = 'login' }: Au
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const router = useRouter()
 
   const {
     register,
@@ -45,6 +47,19 @@ export default function AuthModal({ isOpen, onClose, defaultMode = 'login' }: Au
       localStorage.setItem('user', JSON.stringify(user))
 
       toast.success(mode === 'login' ? 'Đăng nhập thành công!' : 'Đăng ký thành công!')
+
+      // Redirect based on role
+      const userRole = user.role
+      if (userRole === 'Patient') {
+        router.push('/patient/portal')
+      } else if (userRole === 'Doctor') {
+        router.push('/doctor/dashboard')
+      } else if (userRole === 'Admin') {
+        router.push('/admin/dashboard')
+      } else {
+        router.push('/profile')
+      }
+
       onClose()
       reset()
       window.location.reload()
