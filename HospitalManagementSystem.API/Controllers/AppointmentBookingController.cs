@@ -70,7 +70,6 @@ namespace HospitalManagementSystem.API.Controllers
                 var timeSlots = new List<TimeSlotDto>();
                 var dayOfWeek = date.DayOfWeek;
 
-                // Generate time slots from 8:00 to 17:00 (30 min intervals)
                 for (int hour = 8; hour < 17; hour++)
                 {
                     for (int minute = 0; minute < 60; minute += 30)

@@ -40,6 +40,11 @@ namespace HospitalManagementSystem.Infrastructure.Configuration
             // Stripe
             { "STRIPE-PUB", "Stripe:PublishableKey" },
             { "STRIPE-SECRET", "Stripe:SecretKey" },
+            { "STRIPE-WEBHOOK", "Stripe:WebhookSecret" },
+
+            // AppSettings
+            { "APP-BASEURL", "AppSettings:BaseUrl" },
+            { "APP-FRONTENDURL", "AppSettings:FrontendUrl" },
 
             // Email
             { "EMAIL-SMTP", "Email:SmtpServer" },

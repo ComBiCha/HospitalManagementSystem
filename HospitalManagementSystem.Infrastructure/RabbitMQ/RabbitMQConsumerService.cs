@@ -232,16 +232,36 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
             var patient = patientRepository.GetPatientByIdAsync(data.PatientId).Result;
             var recipientEmail = patient?.Email ?? "patient@email.com";
             
-            // Get User.Id from Patient (find user with matching PatientId)
             var user = _serviceProvider.CreateScope().ServiceProvider
                 .GetRequiredService<HospitalDbContext>()
                 .Users.FirstOrDefault(u => u.PatientId == data.PatientId);
             
-            var userId = user?.Id ?? 0; // Fallback to 0 if user not found
+            var userId = user?.Id ?? 0;
             
-            var appointmentDate = data.Date.ToString("yyyy-MM-dd HH:mm");
-            var subject = "Appointment Confirmation";
-            var content = $"Your appointment with Dr. {data.DoctorName} is scheduled for {appointmentDate}.";
+            var appointmentDate = data.Date.ToString("dd/MM/yyyy HH:mm");
+            var subject = "🏥 Appointment Created - Payment Required";
+            var content = $@"Dear {patient?.Name ?? "Patient"},
+
+Your appointment has been created successfully!
+
+📋 Appointment Details:
+━━━━━━━━━━━━━━━━━━━━━━━━
+👨‍⚕️ Doctor: Dr. {data.DoctorName}
+🏥 Specialty: {data.DoctorSpecialty}
+📅 Date & Time: {appointmentDate}
+🔖 Status: PENDING PAYMENT
+
+💳 Payment Required:
+━━━━━━━━━━━━━━━━━━━━━━━━
+Amount: 50,000 VND (Booking Fee)
+⚠️ Please complete payment within 30 minutes to confirm your appointment.
+
+👉 Go to your portal and click ""Thanh toán ngay"" button to pay.
+
+Thank you for choosing our hospital!
+
+Best regards,
+Hospital Management System";
 
             return new Notification
             {
@@ -259,7 +279,9 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
                     PatientId = data.PatientId,
                     AppointmentDate = data.Date,
                     DoctorSpecialty = data.DoctorSpecialty,
-                    EventType = "appointment.created"
+                    EventType = "appointment.created",
+                    BookingFee = 50000,
+                    AppointmentStatus = "PendingPayment"
                 })
             };
         }
@@ -370,18 +392,60 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
 
         private Notification CreatePaymentProcessedNotification(PaymentProcessedEvent data)
         {
-            var subject = "Payment Success";
-            var content = $"Your payment of {data.Amount} for billing #{data.BillingId} was processed successfully using {data.PaymentMethod}.";
+            using var scope = _serviceProvider.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<HospitalDbContext>();
+            var patientRepo = scope.ServiceProvider.GetRequiredService<IPatientRepository>();
+            
+            var patient = patientRepo.GetPatientByIdAsync(data.PatientId).Result;
+            var recipientEmail = patient?.Email ?? "patient@email.com";
+            
+            var appointment = context.Appointments
+                .Include(a => a.Doctor)
+                .FirstOrDefault(a => a.Id == data.AppointmentId);
+            
+            var appointmentDetails = "";
+            if (appointment != null)
+            {
+                appointmentDetails = $@"
+📋 Appointment Details:
+━━━━━━━━━━━━━━━━━━━━━━━━
+👨‍⚕️ Doctor: Dr. {appointment.Doctor.Name}
+🏥 Specialty: {appointment.Doctor.Specialty}
+📅 Date & Time: {appointment.Date:dd/MM/yyyy HH:mm}
+🔖 Status: SCHEDULED ✅
+";
+            }
+            
+            var subject = "✅ Payment Successful - Appointment Confirmed";
+            var content = $@"Dear {patient?.Name ?? "Patient"},
+
+Your payment has been processed successfully!
+
+💳 Payment Details:
+━━━━━━━━━━━━━━━━━━━━━━━━
+Amount Paid: {data.Amount:N0} VND
+Payment Method: {data.PaymentMethod}
+Transaction ID: {data.TransactionId}
+Processed At: {data.ProcessedAt:dd/MM/yyyy HH:mm}
+{appointmentDetails}
+Your appointment is now CONFIRMED. Please arrive 15 minutes before your scheduled time.
+
+Thank you for choosing our hospital!
+
+Best regards,
+Hospital Management System";
+
             return new Notification
             {
                 UserId = data.PatientId,
-                Recipient = "user@email.com",
+                Recipient = recipientEmail,
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
                 Status = NotificationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
                 IsRead = false,
+                AppointmentDate = appointment?.Date,
                 Metadata = JsonConvert.SerializeObject(new
                 {
                     BillingId = data.BillingId,
@@ -390,8 +454,7 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
                     PaymentMethod = data.PaymentMethod,
                     TransactionId = data.TransactionId,
                     ProcessedAt = data.ProcessedAt,
-                    ProcessedByUserId = data.ProcessedByUserId,
-                    ProcessedByRole = data.ProcessedByRole
+                    AppointmentStatus = "Scheduled"
                 })
             };
         }
@@ -426,18 +489,62 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
 
         private Notification CreateRefundProcessedNotification(RefundProcessedEvent data)
         {
-            var subject = "Refund Processed";
-            var content = $"Your refund of {data.RefundAmount} for billing #{data.BillingId} has been processed.";
+            using var scope = _serviceProvider.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<HospitalDbContext>();
+            var patientRepo = scope.ServiceProvider.GetRequiredService<IPatientRepository>();
+            
+            var patient = patientRepo.GetPatientByIdAsync(data.PatientId).Result;
+            var recipientEmail = patient?.Email ?? "patient@email.com";
+            
+            var appointment = context.Appointments
+                .Include(a => a.Doctor)
+                .FirstOrDefault(a => a.Id == data.AppointmentId);
+            
+            var appointmentInfo = "";
+            if (appointment != null)
+            {
+                appointmentInfo = $@"
+📋 Cancelled Appointment:
+━━━━━━━━━━━━━━━━━━━━━━━━
+👨‍⚕️ Doctor: Dr. {appointment.Doctor.Name}
+🏥 Specialty: {appointment.Doctor.Specialty}
+📅 Date & Time: {appointment.Date:dd/MM/yyyy HH:mm}
+🔖 Status: CANCELLED
+";
+            }
+            
+            var subject = "💰 Refund Processed - Appointment Cancelled";
+            var content = $@"Dear {patient?.Name ?? "Patient"},
+
+Your appointment has been cancelled and refund has been processed.
+
+💸 Refund Details:
+━━━━━━━━━━━━━━━━━━━━━━━━
+Refund Amount: {data.RefundAmount:N0} VND
+Original Payment: {data.OriginalAmount:N0} VND
+Payment Method: {data.PaymentMethod}
+Original Transaction ID: {data.OriginalTransactionId}
+Refund Transaction ID: {data.RefundTransactionId}
+Refunded At: {data.RefundedAt:dd/MM/yyyy HH:mm}
+{appointmentInfo}
+The refund will be credited back to your original payment method within 5-10 business days.
+
+If you have any questions, please contact our support team.
+
+Best regards,
+Hospital Management System";
+
             return new Notification
             {
                 UserId = data.PatientId,
-                Recipient = "user@email.com",
+                Recipient = recipientEmail,
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
                 Status = NotificationStatus.Pending,
                 CreatedAt = DateTime.UtcNow,
                 IsRead = false,
+                AppointmentDate = appointment?.Date,
                 Metadata = JsonConvert.SerializeObject(new
                 {
                     BillingId = data.BillingId,
@@ -448,7 +555,6 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
                     OriginalTransactionId = data.OriginalTransactionId,
                     RefundTransactionId = data.RefundTransactionId,
                     RefundedAt = data.RefundedAt,
-                    RefundedByUserId = data.RefundedByUserId,
                     RefundedByRole = data.RefundedByRole
                 })
             };

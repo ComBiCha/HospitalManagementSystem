@@ -121,14 +121,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
 
         public async Task<IEnumerable<Doctor>> GetAvailableDoctorsAsync(DateTime appointmentDate, string specialty)
         {
-            // Frontend sends local time as UTC (e.g., 09:30Z means 09:30 Vietnam time)
-            // Just use the hour/minute directly, ignore timezone conversion
             var requestedDate = appointmentDate.Kind == DateTimeKind.Utc 
                 ? appointmentDate 
                 : DateTime.SpecifyKind(appointmentDate, DateTimeKind.Utc);
 
             var dayOfWeek = requestedDate.DayOfWeek;
-            var time = requestedDate.TimeOfDay; // Use time as-is (09:30)
+            var time = requestedDate.TimeOfDay;
 
             _logger.LogInformation("Searching doctors: DayOfWeek={DayOfWeek}, Time={Time}, Specialty={Specialty}, Requested={Requested}", 
                 dayOfWeek, time, specialty, requestedDate);
@@ -156,12 +154,8 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                     .Where(a => a.DoctorId == doctor.Id && a.Status != "Cancelled")
                     .ToListAsync();
 
-                // Compare using TimeOfDay only (ignore date/timezone)
                 var hasConflict = doctorAppointments.Any(a => 
                 {
-                    // Database stores with +07 offset, but we only care about hour:minute
-                    // EF reads "09:30+07" as "02:30 UTC", but TimeOfDay will give us wrong value
-                    // Add 7 hours back to get the original local time
                     var existingTimeLocal = a.Date.AddHours(7).TimeOfDay;
                     var requestedTime = requestedDate.TimeOfDay;
                     

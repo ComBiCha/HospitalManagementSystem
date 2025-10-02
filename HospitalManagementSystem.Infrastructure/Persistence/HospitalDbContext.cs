@@ -9,16 +9,24 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
         {
         }
 
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+        {
+            // Suppress pending model changes warning temporarily
+            optionsBuilder.ConfigureWarnings(warnings => 
+                warnings.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+        }
+
         public DbSet<Patient> Patients { get; set; }
         public DbSet<Doctor> Doctors { get; set; }
         public DbSet<Appointment> Appointments { get; set; }
-        public DbSet<Billing> Billings { get; set; }
+        public DbSet<Payment> Payments { get; set; }
+        public DbSet<MedicalRecord> MedicalRecords { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<User> Users { get; set; }
         public DbSet<ImageInfo> Images { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<PatientIdentifiers> PatientIdentifiers { get; set; }
-        public DbSet<DoctorShift> DoctorShifts { get; set; } // Added DoctorShifts DbSet
+        public DbSet<DoctorShift> DoctorShifts { get; set; } 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -165,8 +173,21 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 entity.Property(e => e.DoctorId).IsRequired();
                 entity.Property(e => e.Date).IsRequired();
                 entity.Property(e => e.Status).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.BookingFee).HasPrecision(18, 2).HasDefaultValue(50000);
                 entity.Property(e => e.CreatedAt).IsRequired();
                 entity.Property(e => e.UpdatedAt).IsRequired();
+                
+                // Configure 1:1 with MedicalRecord
+                entity.HasOne(e => e.MedicalRecord)
+                    .WithOne(m => m.Appointment)
+                    .HasForeignKey<MedicalRecord>(m => m.AppointmentId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                
+                // Configure 1:1 with BookingPayment (nullable)
+                entity.HasOne(e => e.BookingPayment)
+                    .WithOne(p => p.Appointment)
+                    .HasForeignKey<Appointment>(e => e.BookingPaymentId)
+                    .OnDelete(DeleteBehavior.SetNull);
                 
                 // Index for performance
                 entity.HasIndex(e => e.PatientId);
@@ -175,15 +196,67 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 entity.HasIndex(e => e.Status);
             });
 
-            modelBuilder.Entity<Billing>(entity =>
+            modelBuilder.Entity<Payment>(entity =>
             {
                 entity.HasKey(e => e.Id);
-                entity.Property(e => e.Amount).HasPrecision(18, 2);
-                entity.Property(e => e.PaymentMethod).IsRequired();
-                entity.Property(e => e.Status).IsRequired();
+                entity.Property(e => e.PatientId).IsRequired();
+                entity.Property(e => e.Amount).HasPrecision(18, 2).IsRequired();
+                entity.Property(e => e.PaymentType).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.PaymentMethod).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Status).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.CreatedAt).IsRequired();
+                
+                // Relationships
+                entity.HasOne(e => e.Patient)
+                    .WithMany()
+                    .HasForeignKey(e => e.PatientId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                
+                // Payment can be for MedicalRecord (many payments per record)
+                entity.HasOne(e => e.MedicalRecord)
+                    .WithMany(m => m.Payments)
+                    .HasForeignKey(e => e.MedicalRecordId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                
+                // Index for performance
                 entity.HasIndex(e => e.AppointmentId);
+                entity.HasIndex(e => e.MedicalRecordId);
                 entity.HasIndex(e => e.PatientId);
                 entity.HasIndex(e => e.TransactionId);
+                entity.HasIndex(e => e.Status);
+            });
+
+            modelBuilder.Entity<MedicalRecord>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.AppointmentId).IsRequired();
+                entity.Property(e => e.PatientId).IsRequired();
+                entity.Property(e => e.DoctorId).IsRequired();
+                entity.Property(e => e.Diagnosis).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.ConsultationFee).HasPrecision(18, 2).HasDefaultValue(200000);
+                entity.Property(e => e.MedicineFee).HasPrecision(18, 2).HasDefaultValue(0);
+                entity.Property(e => e.TestFee).HasPrecision(18, 2).HasDefaultValue(0);
+                entity.Property(e => e.OtherFee).HasPrecision(18, 2).HasDefaultValue(0);
+                entity.Property(e => e.PaidAmount).HasPrecision(18, 2).HasDefaultValue(0);
+                entity.Property(e => e.PaymentStatus).IsRequired().HasMaxLength(50).HasDefaultValue("Unpaid");
+                entity.Property(e => e.CreatedAt).IsRequired();
+                
+                // Relationships
+                entity.HasOne(e => e.Patient)
+                    .WithMany()
+                    .HasForeignKey(e => e.PatientId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                
+                entity.HasOne(e => e.Doctor)
+                    .WithMany()
+                    .HasForeignKey(e => e.DoctorId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                
+                // Index for performance
+                entity.HasIndex(e => e.AppointmentId).IsUnique();
+                entity.HasIndex(e => e.PatientId);
+                entity.HasIndex(e => e.DoctorId);
+                entity.HasIndex(e => e.PaymentStatus);
             });
 
             // Seed default users

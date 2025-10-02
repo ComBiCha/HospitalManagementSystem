@@ -164,24 +164,35 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
     
     setIsLoading(true);
     try {
-      const appointmentDateTime = `${selectedDate}T${selectedTime}:00Z`;
+      // Convert to local datetime first, then to ISO string
+      const localDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
+      const appointmentDateTime = localDateTime.toISOString();
       
-      await api.post('/appointments', {
+      // Step 1: Create appointment (Status = PendingPayment)
+      const appointmentResponse = await api.post('/appointments', {
         patientId,
         doctorId: selectedDoctor,
-        date: appointmentDateTime,
-        status: 'Scheduled'
+        date: appointmentDateTime
       });
       
-      toast.success('Đặt lịch khám thành công!');
-      setShowBookingModal(false);
-      resetBookingFlow();
-      fetchAppointments();
+      const appointmentId = appointmentResponse.data.id;
+      
+      toast.success('Đặt lịch thành công! Đang chuyển đến trang thanh toán...');
+      
+      // Step 2: Create payment and get Stripe checkout URL
+      const paymentResponse = await api.post('/payments/booking-fee', {
+        appointmentId
+      });
+      
+      const { checkoutUrl } = paymentResponse.data;
+      
+      // Step 3: Redirect to Stripe checkout
+      window.location.href = checkoutUrl;
+      
     } catch (error: any) {
       console.error('Error booking appointment:', error);
       const errorMsg = error.response?.data || 'Đặt lịch khám thất bại!';
       toast.error(errorMsg);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -291,10 +302,15 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
                       </div>
                       <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
                         appointment.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
+                        appointment.status === 'PendingPayment' ? 'bg-yellow-100 text-yellow-800' :
                         appointment.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                        appointment.status === 'ExpiredPayment' ? 'bg-gray-100 text-gray-800' :
                         'bg-red-100 text-red-800'
                       }`}>
-                        {appointment.status}
+                        {appointment.status === 'PendingPayment' ? 'Chờ thanh toán' :
+                         appointment.status === 'Scheduled' ? 'Đã xác nhận' :
+                         appointment.status === 'ExpiredPayment' ? 'Hết hạn' :
+                         appointment.status}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-4 mb-4">
@@ -314,7 +330,30 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
                       </div>
                     </div>
                     
-                    {/* Cancel button */}
+                    {/* Action buttons */}
+                    {appointment.status === 'PendingPayment' && (
+                      <div className="flex items-center space-x-3">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const response = await api.post('/payments/booking-fee', {
+                                appointmentId: appointment.id
+                              });
+                              window.location.href = response.data.checkoutUrl;
+                            } catch (error) {
+                              toast.error('Không thể tạo thanh toán');
+                            }
+                          }}
+                          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                          💳 Thanh toán ngay
+                        </button>
+                        <div className="text-xs text-orange-600">
+                          ⏰ Thanh toán trước 15 phút
+                        </div>
+                      </div>
+                    )}
+                    
                     {appointment.status === 'Scheduled' && (
                       <div className="flex items-center">
                         {canCancel ? (
@@ -332,6 +371,12 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
                             Không thể hủy (phải trước 6 giờ)
                           </div>
                         )}
+                      </div>
+                    )}
+                    
+                    {appointment.status === 'ExpiredPayment' && (
+                      <div className="text-xs text-gray-500">
+                        Hết hạn thanh toán - Vui lòng đặt lại lịch khám
                       </div>
                     )}
                   </div>

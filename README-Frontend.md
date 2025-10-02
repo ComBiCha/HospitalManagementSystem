@@ -90,3 +90,4 @@ kubectl logs -f deployment/hms-frontend
 kubectl get svc hms-frontend-service
 ```
 
+

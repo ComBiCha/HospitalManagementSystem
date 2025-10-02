@@ -20,6 +20,7 @@ namespace HospitalManagementSystem.API.Controllers
         private readonly IAppointmentRepository _appointmentRepository;
         private readonly IPatientRepository _patientRepository;
         private readonly IDoctorRepository _doctorRepository;
+        private readonly IPaymentRepository _paymentRepository;
         private readonly IRabbitMQService _rabbitMQService;
         private readonly ILogger<AppointmentsController> _logger;
 
@@ -27,12 +28,14 @@ namespace HospitalManagementSystem.API.Controllers
             IAppointmentRepository appointmentRepository,
             IPatientRepository patientRepository,
             IDoctorRepository doctorRepository,
+            IPaymentRepository paymentRepository,
             IRabbitMQService rabbitMQService, 
             ILogger<AppointmentsController> logger)
         {
             _appointmentRepository = appointmentRepository;
             _patientRepository = patientRepository;
             _doctorRepository = doctorRepository;
+            _paymentRepository = paymentRepository;
             _rabbitMQService = rabbitMQService; 
             _logger = logger;
         }
@@ -256,7 +259,9 @@ namespace HospitalManagementSystem.API.Controllers
                     PatientId = request.PatientId,
                     DoctorId = request.DoctorId,
                     Date = utcDate,
-                    Status = string.IsNullOrEmpty(request.Status) ? "Scheduled" : request.Status,
+                    Status = "PendingPayment", 
+                    BookingFee = 50000, 
+                    PaymentExpiresAt = DateTime.UtcNow.AddMinutes(30),
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -398,6 +403,7 @@ namespace HospitalManagementSystem.API.Controllers
 
         /// <summary>
         /// Delete an appointment with JWT authorization and RabbitMQ event
+        /// Handles refund if payment was completed
         /// </summary>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin,Doctor,Patient")]
@@ -417,8 +423,6 @@ namespace HospitalManagementSystem.API.Controllers
                     return NotFound($"Appointment with ID {id} not found");
                 }
 
-
-                // ✅ Role-based access control
                 if (!await CanAccessAppointment(appointment, currentUserId, currentUserRole))
                 {
                     return Forbid("You don't have permission to cancel this appointment");
@@ -430,18 +434,84 @@ namespace HospitalManagementSystem.API.Controllers
                     return NotFound($"Patient with ID {appointment.PatientId} not found");
                 }
 
-                // Validate doctor exists
                 var doctor = await _doctorRepository.GetByIdAsync(appointment.DoctorId);
                 if (doctor == null)
                 {
                     return NotFound($"Doctor with ID {appointment.DoctorId} not found");
                 }
 
-                var deleted = await _appointmentRepository.DeleteAsync(id);
-                if (!deleted)
+                // Handle payment refund
+                if (appointment.BookingPaymentId.HasValue)
                 {
-                    return NotFound($"Appointment with ID {id} not found");
+                    var payment = await _paymentRepository.GetByIdAsync(appointment.BookingPaymentId.Value);
+                    if (payment != null)
+                    {
+                        if (payment.Status == "Completed")
+                        {
+                            try
+                            {
+                                if (!string.IsNullOrEmpty(payment.StripePaymentIntentId))
+                                {
+                                    var refundService = new Stripe.RefundService();
+                                    var refund = await refundService.CreateAsync(new Stripe.RefundCreateOptions
+                                    {
+                                        PaymentIntent = payment.StripePaymentIntentId,
+                                        Amount = (long)payment.Amount,
+                                        Reason = Stripe.RefundReasons.RequestedByCustomer,
+                                        Metadata = new Dictionary<string, string>
+                                        {
+                                            { "appointment_id", appointment.Id.ToString() },
+                                            { "cancelled_by", currentUserId.ToString() }
+                                        }
+                                    });
+
+                                    payment.Status = "Refunded";
+                                    payment.FailureReason = $"Appointment cancelled by {currentUserRole}";
+                                    payment.UpdatedAt = DateTime.UtcNow;
+                                    await _paymentRepository.UpdateAsync(payment);
+
+                                    _logger.LogInformation("Refunded payment {PaymentId} for cancelled appointment {AppointmentId}",
+                                        payment.Id, appointment.Id);
+
+                                    // Publish refund event
+                                    await _rabbitMQService.PublishRefundProcessedAsync(new RefundProcessedEvent
+                                    {
+                                        BillingId = payment.Id,
+                                        AppointmentId = appointment.Id,
+                                        PatientId = payment.PatientId,
+                                        OriginalAmount = payment.Amount,
+                                        RefundAmount = payment.Amount,
+                                        PaymentMethod = payment.PaymentMethod,
+                                        OriginalTransactionId = payment.TransactionId,
+                                        RefundTransactionId = refund.Id,
+                                        RefundedAt = DateTime.UtcNow,
+                                        RefundedByUserId = currentUserId,
+                                        RefundedByRole = currentUserRole
+                                    });
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Error refunding payment {PaymentId}", payment.Id);
+                            }
+                        }
+                        else if (payment.Status == "Pending")
+                        {
+                            payment.Status = "Failed";
+                            payment.FailureReason = "Appointment cancelled before payment completed";
+                            payment.UpdatedAt = DateTime.UtcNow;
+                            await _paymentRepository.UpdateAsync(payment);
+
+                            _logger.LogInformation("Marked pending payment {PaymentId} as failed for cancelled appointment {AppointmentId}",
+                                payment.Id, appointment.Id);
+                        }
+                    }
                 }
+
+                appointment.Status = "Cancelled";
+                appointment.CancellationReason = $"Cancelled by {currentUserRole}";
+                appointment.UpdatedAt = DateTime.UtcNow;
+                await _appointmentRepository.UpdateAsync(appointment);
 
                 await _rabbitMQService.PublishAppointmentCancelledAsync(new AppointmentCancelledEvent
                 {

@@ -10,7 +10,7 @@ using HospitalManagementSystem.Infrastructure.RabbitMQ;
 using HospitalManagementSystem.Infrastructure.Channels;
 using HospitalManagementSystem.Infrastructure.PaymentFactory;
 using HospitalManagementSystem.Infrastructure.PaymentMethods;
-using HospitalManagementSystem.Infrastructure.BillingStrategies;
+// using HospitalManagementSystem.Infrastructure.BillingStrategies;
 using HospitalManagementSystem.Infrastructure.Epic;
 using HospitalManagementSystem.Infrastructure.Cerner;
 using HospitalManagementSystem.Infrastructure.FhirFactory;
@@ -18,7 +18,7 @@ using HospitalManagementSystem.Infrastructure.Dicom;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.API.Services;
 using HospitalManagementSystem.Domain.Repositories;
-using HospitalManagementSystem.Domain.Strategies;
+// using HospitalManagementSystem.Domain.Strategies;
 using HospitalManagementSystem.Domain.Caching;
 using HospitalManagementSystem.Domain.Payments;
 using HospitalManagementSystem.Domain.Factories;
@@ -72,7 +72,8 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IDoctorRepository, DoctorRepository>();
 builder.Services.AddHttpClient<IStorageService, SeaweedStorageService>();
 builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
-builder.Services.AddScoped<IBillingRepository, BillingRepository>();
+builder.Services.AddScoped<IPaymentRepository, PaymentRepository>(); // Add this
+// builder.Services.AddScoped<IBillingRepository, BillingRepository>();
 builder.Services.AddScoped<IDoctorShiftRepository, DoctorShiftRepository>();
 
 builder.Services.AddHostedService<RabbitMQConsumerService>();
@@ -160,8 +161,8 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddScoped<StripePaymentMethod>();
 builder.Services.AddScoped<CashPaymentMethod>();
 builder.Services.AddScoped<IPaymentFactory, PaymentFactory>();
-builder.Services.AddScoped<IBillingStrategyFactory, BillingStrategyFactory>();
-builder.Services.AddScoped<InsuranceBillingStrategy>();
+// builder.Services.AddScoped<IBillingStrategyFactory, BillingStrategyFactory>();
+// builder.Services.AddScoped<InsuranceBillingStrategy>();
 
 builder.Services.AddScoped<EpicFhirIntegrationService>();
 builder.Services.AddScoped<CernerFhirIntegrationService>();

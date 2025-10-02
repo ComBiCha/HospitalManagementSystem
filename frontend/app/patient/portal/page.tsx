@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import toast from 'react-hot-toast';
 import { api, authApi } from '@/lib/api';
 import { User, Patient } from '@/lib/types';
-import toast from 'react-hot-toast';
 import {
   User as UserIcon,
   Calendar,
@@ -37,6 +37,7 @@ const sidebarItems = [
 
 export default function PatientPortal() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<User | null>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [activeSection, setActiveSection] = useState<SectionType>('profile');
@@ -45,6 +46,27 @@ export default function PatientPortal() {
   useEffect(() => {
     fetchUserData();
   }, []);
+
+  useEffect(() => {
+    // Handle payment callback
+    const paymentStatus = searchParams?.get('payment');
+    const appointmentId = searchParams?.get('appointment');
+
+    if (paymentStatus === 'success') {
+      toast.success(`Thanh toán thành công! Lịch khám #${appointmentId} đã được xác nhận.`);
+      setActiveSection('appointments'); // Switch to appointments tab
+      // Clean URL
+      window.history.replaceState({}, '', '/patient/portal');
+    } else if (paymentStatus === 'cancelled') {
+      toast.error('Thanh toán bị hủy. Vui lòng thử lại.');
+      setActiveSection('appointments');
+      window.history.replaceState({}, '', '/patient/portal');
+    } else if (paymentStatus === 'error') {
+      toast.error('Có lỗi xảy ra trong quá trình thanh toán.');
+      setActiveSection('appointments');
+      window.history.replaceState({}, '', '/patient/portal');
+    }
+  }, [searchParams]);
 
   const fetchUserData = async () => {
     setIsLoading(true);
