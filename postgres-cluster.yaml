@@ -1,0 +1,23 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: hms-postgres
+spec:
+  instances: 2
+  primaryUpdateStrategy: unsupervised
+  
+  postgresql:
+    parameters:
+      log_statement: "all"
+      log_connections: "on"
+      log_disconnections: "on"
+  
+  bootstrap:
+    initdb:
+      database: HMS_CentralDB
+      owner: postgres
+      secret:
+        name: hms-postgres-superuser
+  
+  storage:
+    size: 5Gi

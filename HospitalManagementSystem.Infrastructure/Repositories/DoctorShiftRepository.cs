@@ -119,7 +119,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                     && s.IsActive);
         }
 
-        public async Task<IEnumerable<Doctor>> GetAvailableDoctorsAsync(DateTime appointmentDate, string specialty)
+        public async Task<IEnumerable<Doctor>> GetAvailableDoctorsAsync(DateTime appointmentDate, string specialty) //stored procedure
         {
             var requestedDate = appointmentDate.Kind == DateTimeKind.Utc 
                 ? appointmentDate 
@@ -151,7 +151,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             foreach (var doctor in workingDoctors)
             {
                 var doctorAppointments = await _context.Appointments
-                    .Where(a => a.DoctorId == doctor.Id && a.Status != "Cancelled")
+                    .Where(a => a.DoctorId == doctor.Id && a.Status != "Cancelled" && a.Status != "ExpiredPayment")
                     .ToListAsync();
 
                 var hasConflict = doctorAppointments.Any(a => 

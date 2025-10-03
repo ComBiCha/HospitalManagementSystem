@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: hms-api
-        image: sangrk/hms-api:v4
+        image: sangrk/hms-api:v20
         imagePullPolicy: Always
         ports:
         - containerPort: 80

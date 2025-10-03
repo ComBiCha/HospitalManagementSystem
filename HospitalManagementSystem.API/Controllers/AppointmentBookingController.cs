@@ -33,9 +33,6 @@ namespace HospitalManagementSystem.API.Controllers
             _logger = logger;
         }
 
-        /// <summary>
-        /// Get all available specialties
-        /// </summary>
         [HttpGet("specialties")]
         public async Task<ActionResult<IEnumerable<string>>> GetSpecialties()
         {
@@ -58,9 +55,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Get available time slots for a specific date
-        /// </summary>
         [HttpGet("available-slots")]
         public async Task<ActionResult<IEnumerable<TimeSlotDto>>> GetAvailableTimeSlots(
             [FromQuery] DateTime date)
@@ -105,9 +99,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Get available doctors for specific date, time and specialty
-        /// </summary>
         [HttpGet("available-doctors")]
         public async Task<ActionResult<IEnumerable<AvailableDoctorDto>>> GetAvailableDoctors(
             [FromQuery] DateTime appointmentDate,
@@ -138,9 +129,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Get doctor's schedule for the week
-        /// </summary>
         [HttpGet("doctor-schedule/{doctorId}")]
         public async Task<ActionResult<IEnumerable<DoctorShiftDto>>> GetDoctorSchedule(int doctorId)
         {
@@ -175,7 +163,6 @@ namespace HospitalManagementSystem.API.Controllers
         }
     }
 
-    // DTOs
     public class TimeSlotDto
     {
         public TimeSpan Time { get; set; }

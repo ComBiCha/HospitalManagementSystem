@@ -87,7 +87,28 @@ export default function ProfileSection({ user, patient, onRefresh }: ProfileSect
     try {
       const response = await api.post('/patients', patientFormData);
       await api.put(`/users/${user.id}`, { patientId: response.data.id });
-      toast.success('Tạo hồ sơ bệnh nhân thành công!');
+      toast.success('Tạo hồ sơ bệnh nhân thành công! Đang làm mới phiên đăng nhập...');
+      
+      // Force logout and login again to refresh JWT token with new PatientId
+      const refreshToken = localStorage.getItem('refreshToken');
+      if (refreshToken) {
+        try {
+          // Try to refresh token to get new JWT with PatientId
+          const refreshResponse = await api.post('/auth/refresh', { refreshToken });
+          localStorage.setItem('token', refreshResponse.data.token);
+          localStorage.setItem('refreshToken', refreshResponse.data.refreshToken);
+          
+          toast.success('Làm mới phiên đăng nhập thành công!');
+        } catch (error) {
+          // If refresh fails, force re-login
+          toast.error('Vui lòng đăng nhập lại để cập nhật thông tin');
+          localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
+          window.location.href = '/';
+          return;
+        }
+      }
+      
       setIsCreatingPatient(false);
       onRefresh();
     } catch (error) {

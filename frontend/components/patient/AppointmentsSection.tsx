@@ -18,6 +18,7 @@ interface Appointment {
   patientName: string;
   doctorName: string;
   doctorSpecialty: string;
+  paymentExpiresAt?: string;
 }
 
 interface TimeSlot {
@@ -32,6 +33,42 @@ interface AvailableDoctor {
   specialty: string;
   email: string;
 }
+
+// Countdown Timer Component
+const CountdownTimer = ({ expiresAt }: { expiresAt: string }) => {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const expiry = new Date(expiresAt).getTime();
+      const diff = expiry - now;
+
+      if (diff <= 0) {
+        setTimeLeft('Hết hạn');
+        clearInterval(interval);
+      } else {
+        const minutes = Math.floor(diff / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        setTimeLeft(`${minutes}:${seconds < 10 ? '0' + seconds : seconds}`);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  const isExpiringSoon = timeLeft !== 'Hết hạn' && parseInt(timeLeft.split(':')[0]) < 5;
+
+  return (
+    <span className={`font-mono font-semibold ${
+      timeLeft === 'Hết hạn' ? 'text-red-600' : 
+      isExpiringSoon ? 'text-orange-600 animate-pulse' : 
+      'text-blue-600'
+    }`}>
+      {timeLeft}
+    </span>
+  );
+};
 
 export default function AppointmentsSection({ patientId }: AppointmentsSectionProps) {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -143,7 +180,7 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
     
     const appointmentsOnDate = appointments.filter(apt => {
       const aptDate = new Date(apt.date).toISOString().split('T')[0];
-      return aptDate === selectedDate && apt.status !== 'Cancelled';
+      return aptDate === selectedDate && apt.status !== 'Cancelled' && apt.status != 'PaymentExpired';
     });
     
     if (appointmentsOnDate.length >= 2) {
@@ -332,29 +369,33 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
                     
                     {/* Action buttons */}
                     {appointment.status === 'PendingPayment' && (
-                      <div className="flex items-center space-x-3">
-                        <button
-                          onClick={async () => {
-                            try {
-                              const response = await api.post('/payments/booking-fee', {
-                                appointmentId: appointment.id
-                              });
-                              window.location.href = response.data.checkoutUrl;
-                            } catch (error) {
-                              toast.error('Không thể tạo thanh toán');
-                            }
-                          }}
-                          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
-                        >
-                          💳 Thanh toán ngay
-                        </button>
-                        <div className="text-xs text-orange-600">
-                          ⏰ Thanh toán trước 15 phút
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-3">
+                          <button
+                            onClick={async () => {
+                              try {
+                                const response = await api.post('/payments/booking-fee', {
+                                  appointmentId: appointment.id
+                                });
+                                window.location.href = response.data.checkoutUrl;
+                              } catch (error) {
+                                toast.error('Không thể tạo thanh toán');
+                              }
+                            }}
+                            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                          >
+                            💳 Thanh toán ngay
+                          </button>
                         </div>
+                        {appointment.paymentExpiresAt && (
+                          <div className="flex items-center space-x-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                            <Clock className="w-4 h-4 text-orange-600" />
+                            <span className="text-xs text-orange-700">Còn lại:</span>
+                            <CountdownTimer expiresAt={appointment.paymentExpiresAt} />
+                          </div>
+                        )}
                       </div>
-                    )}
-                    
-                    {appointment.status === 'Scheduled' && (
+                    )}                    {appointment.status === 'Scheduled' && (
                       <div className="flex items-center">
                         {canCancel ? (
                           <button

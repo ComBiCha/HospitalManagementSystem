@@ -1,10 +1,9 @@
 import axios from 'axios'
 
 // API URL configuration
-// Sử dụng /api để Next.js proxy đến backend service
 const API_URL = typeof window === 'undefined' 
-  ? 'http://hms-api-service/api'  // Server-side: gọi trực tiếp service
-  : '/api'  // Client-side: qua Next.js proxy
+  ? 'http://hms-api-service/api'  
+  : '/api'  
 
 // Debug logging
 console.log('🔧 API Configuration:', {

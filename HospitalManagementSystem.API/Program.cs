@@ -20,7 +20,6 @@ using HospitalManagementSystem.API.Services;
 using HospitalManagementSystem.Domain.Repositories;
 // using HospitalManagementSystem.Domain.Strategies;
 using HospitalManagementSystem.Domain.Caching;
-using HospitalManagementSystem.Domain.Payments;
 using HospitalManagementSystem.Domain.Factories;
 using HospitalManagementSystem.Domain.RabbitMQ;
 using HospitalManagementSystem.Domain.Storages;
@@ -30,6 +29,9 @@ using StackExchange.Redis;
 using Microsoft.OpenApi.Models;
 using DotNetEnv;
 using HospitalManagementSystem.Infrastructure.Configuration;
+using Hangfire;
+using Hangfire.PostgreSql;
+using Hangfire.Dashboard;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -174,6 +176,14 @@ builder.Services.AddScoped<DicomApplicationService>();
 
 builder.Services.AddScoped<PatientService>();
 
+builder.Services.AddHangfire(config => config
+    .SetDataCompatibilityLevel(CompatibilityLevel.Version_170)
+    .UseSimpleAssemblyNameTypeSerializer()
+    .UseRecommendedSerializerSettings()
+    .UsePostgreSqlStorage(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddHangfireServer();
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -196,4 +206,19 @@ app.MapGrpcService<PatientGrpcService>();
 app.MapGrpcService<DoctorGrpcService>();
 app.MapGrpcService<AuthGrpcService>();
 app.MapHealthChecks("/health");
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { new HangfireAuthorizationFilter() }
+});
 app.Run();
+
+public class HangfireAuthorizationFilter : IDashboardAuthorizationFilter
+{
+    public bool Authorize(DashboardContext context)
+    {
+        var httpContext = context.GetHttpContext();
+        
+        return httpContext.User.Identity?.IsAuthenticated == true && 
+               httpContext.User.IsInRole("Admin");
+    }
+}

@@ -362,15 +362,39 @@ Hospital Management System";
         // Billing notification helpers
         private Notification CreatePaymentInitiatedNotification(PaymentInitiatedEvent data)
         {
-            var subject = "Payment Initiated";
-            var content = $"Your payment of {data.Amount} for billing #{data.BillingId} has been initiated using {data.PaymentMethod}.";
-            if (!string.IsNullOrEmpty(data.CheckoutUrl))
-                content += $"\nPlease complete your payment at: {data.CheckoutUrl}";
+            using var scope = _serviceProvider.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<HospitalDbContext>();
+            var patientRepo = scope.ServiceProvider.GetRequiredService<IPatientRepository>();
+            
+            var patient = patientRepo.GetPatientByIdAsync(data.PatientId).Result;
+            var recipientEmail = patient?.Email ?? "patient@email.com";
+            
+            var user = context.Users.FirstOrDefault(u => u.PatientId == data.PatientId);
+            var userId = user?.Id ?? 0;
+            
+            var subject = "💳 Payment Initiated - Complete Your Payment";
+            var content = $@"Dear {patient?.Name ?? "Patient"},
+
+Your payment session has been created successfully!
+
+💳 Payment Details:
+━━━━━━━━━━━━━━━━━━━━━━━━
+Amount: {data.Amount:N0} VND
+Payment Method: {data.PaymentMethod}
+Session ID: {data.SessionId}
+Initiated At: {data.InitiatedAt:dd/MM/yyyy HH:mm}
+
+⚠️ Please complete your payment within 30 minutes.
+
+👉 Click the payment link in your portal to proceed.
+
+Best regards,
+Hospital Management System";
 
             return new Notification
             {
-                UserId = data.PatientId,
-                Recipient = "user@email.com", // TODO: lấy email thực tế từ patient/user nếu cần
+                UserId = userId,
+                Recipient = recipientEmail,
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,
@@ -461,12 +485,39 @@ Hospital Management System";
 
         private Notification CreatePaymentFailedNotification(PaymentFailedEvent data)
         {
-            var subject = "Payment Failed";
-            var content = $"Your payment of {data.Amount} for billing #{data.BillingId} failed. Reason: {data.FailureReason}";
+            using var scope = _serviceProvider.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<HospitalDbContext>();
+            var patientRepo = scope.ServiceProvider.GetRequiredService<IPatientRepository>();
+            
+            var patient = patientRepo.GetPatientByIdAsync(data.PatientId).Result;
+            var recipientEmail = patient?.Email ?? "patient@email.com";
+            
+            var user = context.Users.FirstOrDefault(u => u.PatientId == data.PatientId);
+            var userId = user?.Id ?? 0;
+            
+            var subject = "❌ Payment Failed";
+            var content = $@"Dear {patient?.Name ?? "Patient"},
+
+Unfortunately, your payment could not be processed.
+
+💳 Payment Details:
+━━━━━━━━━━━━━━━━━━━━━━━━
+Amount: {data.Amount:N0} VND
+Payment Method: {data.PaymentMethod}
+Billing ID: #{data.BillingId}
+Failed At: {data.FailedAt:dd/MM/yyyy HH:mm}
+
+❌ Reason: {data.FailureReason}
+
+Please try again or contact support if the issue persists.
+
+Best regards,
+Hospital Management System";
+
             return new Notification
             {
-                UserId = data.PatientId,
-                Recipient = "user@email.com",
+                UserId = userId,
+                Recipient = recipientEmail,
                 Subject = subject,
                 Content = content,
                 ChannelType = NotificationChannels.Email,

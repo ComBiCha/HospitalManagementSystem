@@ -41,9 +41,6 @@ namespace HospitalManagementSystem.API.Controllers
             StripeConfiguration.ApiKey = configuration["Stripe:SecretKey"];
         }
 
-        /// <summary>
-        /// Create booking fee payment and redirect to Stripe checkout
-        /// </summary>
         [HttpPost("booking-fee")]
         [Authorize(Roles = "Admin,Patient")]
         public async Task<ActionResult<CreatePaymentResponse>> CreateBookingFeePayment(CreateBookingFeeRequest request)
@@ -102,7 +99,6 @@ namespace HospitalManagementSystem.API.Controllers
                         var stripeSessionService = new SessionService();
                         var existingSession = await stripeSessionService.GetAsync(existingPayment.StripeSessionId);
                         
-                        // Check if session is still valid (not expired)
                         if (existingSession.ExpiresAt > DateTime.UtcNow && existingSession.Status == "open")
                         {
                             payment = existingPayment;
@@ -227,9 +223,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Stripe payment success callback
-        /// </summary>
         [HttpGet("success")]
         [AllowAnonymous]
         public async Task<IActionResult> PaymentSuccess([FromQuery] string session_id, [FromQuery] int payment_id)
@@ -257,7 +250,6 @@ namespace HospitalManagementSystem.API.Controllers
                     return NotFound("Appointment not found");
                 }
 
-                // Only update if payment is still pending
                 if (payment.Status == PaymentStatuses.Pending && session.PaymentStatus == "paid")
                 {
                     // Update payment
@@ -277,7 +269,6 @@ namespace HospitalManagementSystem.API.Controllers
                     _logger.LogInformation("Payment {PaymentId} completed, Appointment {AppointmentId} status updated to Scheduled",
                         payment.Id, appointment.Id);
 
-                    // Publish payment processed event
                     await _rabbitMQService.PublishPaymentProcessedAsync(new PaymentProcessedEvent
                     {
                         BillingId = payment.Id,
@@ -293,6 +284,10 @@ namespace HospitalManagementSystem.API.Controllers
                         SessionId = session.Id
                     });
                 }
+                else if (payment.Status == PaymentStatuses.Completed)
+                {
+                    _logger.LogInformation("Payment {PaymentId} already completed (likely by webhook), skipping duplicate processing", payment.Id);
+                }
 
                 
                 var frontendUrl = _configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000";
@@ -306,9 +301,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Stripe payment cancel callback
-        /// </summary>
         [HttpGet("cancel")]
         [AllowAnonymous]
         public IActionResult PaymentCancel([FromQuery] int payment_id)
@@ -319,9 +311,6 @@ namespace HospitalManagementSystem.API.Controllers
             return Redirect($"{frontendUrl}/patient/portal?payment=cancelled");
         }
 
-        /// <summary>
-        /// Stripe webhook for payment events
-        /// </summary>
         [HttpPost("webhook")]
         [AllowAnonymous]
         public async Task<IActionResult> StripeWebhook()
@@ -387,17 +376,30 @@ namespace HospitalManagementSystem.API.Controllers
                     }
                 }
 
+                await _rabbitMQService.PublishPaymentProcessedAsync(new PaymentProcessedEvent
+                {
+                    BillingId = payment.Id,
+                    AppointmentId = payment.AppointmentId ?? 0,
+                    PatientId = payment.PatientId,
+                    Amount = payment.Amount,
+                    PaymentMethod = payment.PaymentMethod,
+                    TransactionId = payment.TransactionId,
+                    ProcessedAt = DateTime.UtcNow,
+                    ProcessedByUserId = payment.PatientId,
+                    ProcessedByRole = "Patient",
+                    PaymentSource = "Stripe",
+                    SessionId = session.Id
+                });
+
                 _logger.LogInformation("Webhook: Payment {PaymentId} completed", paymentId);
             }
         }
 
         private async Task HandlePaymentIntentSucceeded(PaymentIntent? paymentIntent)
         {
-            // Similar to HandleCheckoutSessionCompleted
             await Task.CompletedTask;
         }
 
-        // Helper methods
         private int GetCurrentUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -415,9 +417,6 @@ namespace HospitalManagementSystem.API.Controllers
             return int.TryParse(patientIdClaim, out int patientId) ? patientId : null;
         }
 
-        /// <summary>
-        /// Refund booking fee payment
-        /// </summary>
         [HttpPost("{paymentId}/refund")]
         [Authorize(Roles = "Admin")]
         public async Task<ActionResult<RefundPaymentResponse>> RefundBookingFee(int paymentId)
@@ -495,7 +494,6 @@ namespace HospitalManagementSystem.API.Controllers
         }
     }
 
-    // DTOs
     public class CreateBookingFeeRequest
     {
         [Required]

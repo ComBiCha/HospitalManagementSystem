@@ -15,6 +15,14 @@
       "static/css/a00849260fc7ebd6.css",
       "static/chunks/app/layout-8af5ca46127227ce.js"
     ],
+    "/profile/page": [
+      "static/chunks/webpack-c251b72fe92c2353.js",
+      "static/chunks/fd9d1056-ba8786e806313227.js",
+      "static/chunks/472-6f1e73f3d44cbb8c.js",
+      "static/chunks/main-app-dcebea42f8f94021.js",
+      "static/chunks/600-5258e2e80861776a.js",
+      "static/chunks/app/profile/page-2af0bf5aade0e9eb.js"
+    ],
     "/page": [
       "static/chunks/webpack-c251b72fe92c2353.js",
       "static/chunks/fd9d1056-ba8786e806313227.js",
@@ -23,14 +31,6 @@
       "static/chunks/600-5258e2e80861776a.js",
       "static/chunks/182-b19ed66e09ab2020.js",
       "static/chunks/app/page-f453c8b01fca25eb.js"
-    ],
-    "/profile/page": [
-      "static/chunks/webpack-c251b72fe92c2353.js",
-      "static/chunks/fd9d1056-ba8786e806313227.js",
-      "static/chunks/472-6f1e73f3d44cbb8c.js",
-      "static/chunks/main-app-dcebea42f8f94021.js",
-      "static/chunks/600-5258e2e80861776a.js",
-      "static/chunks/app/profile/page-2af0bf5aade0e9eb.js"
     ],
     "/patient/layout": [
       "static/chunks/webpack-c251b72fe92c2353.js",

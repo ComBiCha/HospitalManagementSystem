@@ -9,6 +9,7 @@ using HospitalManagementSystem.Infrastructure.Persistence;
 using HospitalManagementSystem.Domain.RabbitMQ;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.Domain.Events;
+using Hangfire;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -191,9 +192,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Create a new appointment with JWT authorization and RabbitMQ event
-        /// </summary>
         [HttpPost]
         [Authorize(Roles = "Admin,Patient,Doctor")]
         public async Task<ActionResult<AppointmentDto>> CreateAppointment(CreateAppointmentRequest request)
@@ -206,9 +204,17 @@ namespace HospitalManagementSystem.API.Controllers
                 if (currentUserRole == "Patient")
                 {
                     var userPatientId = GetCurrentUserPatientId();
+                    _logger.LogInformation("Patient authorization check: UserPatientId={UserPatientId}, RequestPatientId={RequestPatientId}", 
+                        userPatientId, request.PatientId);
+                    
+                    if (!userPatientId.HasValue)
+                    {
+                        return StatusCode(403, "Patient ID not found in user profile");
+                    }
+                    
                     if (userPatientId != request.PatientId)
                     {
-                        return Forbid("You can only create appointments for yourself");
+                        return StatusCode(403, "You can only create appointments for yourself");
                     }
                 }
 
@@ -267,6 +273,11 @@ namespace HospitalManagementSystem.API.Controllers
                 };
 
                 var createdAppointment = await _appointmentRepository.CreateAsync(appointment);
+
+                BackgroundJob.Schedule(
+                    () => CheckAppointmentExpiration(createdAppointment.Id),
+                    TimeSpan.FromMinutes(30)
+                );
 
                 await _rabbitMQService.PublishAppointmentCreatedAsync(
                     new AppointmentCreatedEvent(
@@ -401,10 +412,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Delete an appointment with JWT authorization and RabbitMQ event
-        /// Handles refund if payment was completed
-        /// </summary>
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin,Doctor,Patient")]
         public async Task<IActionResult> DeleteAppointment(int id)
@@ -540,7 +547,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // ✅ Helper methods for JWT claims extraction
         private int GetCurrentUserId()
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -564,8 +570,6 @@ namespace HospitalManagementSystem.API.Controllers
             return int.TryParse(doctorIdClaim, out int doctorId) ? doctorId : null;
         }
 
-        // ✅ Authorization helper method
-        // ✅ Fix async method warning - line 485
         private async Task<bool> CanAccessAppointment(Appointment appointment, int userId, string userRole)
         {
             await Task.CompletedTask;
@@ -588,7 +592,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // ✅ Mapping helper method
         private async Task<AppointmentDto> MapToAppointmentDto(Appointment appointment)
         {
             var patient = await _patientRepository.GetPatientByIdAsync(appointment.PatientId);
@@ -603,12 +606,59 @@ namespace HospitalManagementSystem.API.Controllers
                 Status = appointment.Status,
                 PatientName = patient?.Name ?? "Unknown Patient",
                 DoctorName = doctor?.Name ?? "Unknown Doctor",
-                DoctorSpecialty = doctor?.Specialty ?? "Unknown Specialty"
+                DoctorSpecialty = doctor?.Specialty ?? "Unknown Specialty",
+                PaymentExpiresAt = appointment.PaymentExpiresAt
             };
+        }
+
+        public async Task CheckAppointmentExpiration(int appointmentId)
+        {
+            try
+            {
+                var appointment = await _appointmentRepository.GetByIdAsync(appointmentId);
+                if (appointment == null) return;
+
+                if (appointment.Status == "PendingPayment" && 
+                    appointment.PaymentExpiresAt.HasValue && 
+                    appointment.PaymentExpiresAt < DateTime.UtcNow)
+                {
+                    appointment.Status = "ExpiredPayment";
+                    appointment.UpdatedAt = DateTime.UtcNow;
+                    await _appointmentRepository.UpdateAsync(appointment);
+
+                    // Find payment by AppointmentId instead of BookingPaymentId
+                    var payment = await _paymentRepository.GetByAppointmentIdAsync(appointmentId);
+                    
+                    if (payment != null && payment.Status == "Pending")
+                    {
+                        payment.Status = "Failed";
+                        payment.FailureReason = "Payment timeout - appointment expired";
+                        payment.UpdatedAt = DateTime.UtcNow;
+                        await _paymentRepository.UpdateAsync(payment);
+                    }
+                    // await _rabbitMQService.PublishPaymentFailedAsync(new PaymentFailedEvent
+                    // {
+                    //     BillingId = payment.Id,
+                    //     AppointmentId = payment.AppointmentId ?? 0,
+                    //     PatientId = payment.PatientId,
+                    //     Amount = payment.Amount,
+                    //     PaymentMethod = payment.PaymentMethod,
+                    //     FailureReason = "Session expired, patient abandoned",
+                    //     FailedAt = DateTime.UtcNow,
+                    //     ProcessedByUserId = currentUserId,
+                    //     ProcessedByRole = currentUserRole
+                    // });
+
+                    _logger.LogInformation("Appointment {AppointmentId} expired - no payment received", appointmentId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking expiration for appointment {AppointmentId}", appointmentId);
+            }
         }
     }
 
-    // ✅ DTOs remain the same as your current implementation
     public class CreateAppointmentRequest
     {
         [Required(ErrorMessage = "Patient ID is required")]
@@ -654,5 +704,6 @@ namespace HospitalManagementSystem.API.Controllers
         public string PatientName { get; set; } = string.Empty;
         public string DoctorName { get; set; } = string.Empty;
         public string DoctorSpecialty { get; set; } = string.Empty;
+        public DateTime? PaymentExpiresAt { get; set; }
     }
 }
