@@ -12,77 +12,164 @@ namespace HospitalManagementSystem.API.Controllers
     public class NotificationsController : ControllerBase
     {
         private readonly NotificationServiceManager _notificationService;
+        private readonly INotificationRepository _notificationRepository;
+        private readonly ILogger<NotificationsController> _logger;
 
-        public NotificationsController(NotificationServiceManager notificationService)
+        public NotificationsController(NotificationServiceManager notificationService, INotificationRepository notificationRepository, ILogger<NotificationsController> logger)
         {
             _notificationService = notificationService;
+            _notificationRepository = notificationRepository;
+            _logger = logger;
         }
 
-        /// <summary>
-        /// Send a notification
-        /// </summary>
-        /// <param name="request">Notification details</param>
-        /// <returns>Success or failure response</returns>
-        [HttpPost("send")]
-        public async Task<IActionResult> SendNotification([FromBody] SendNotificationRequest request)
-        {
-            var message = new NotificationMessage
-            {
-                Recipient = request.Recipient,
-                Subject = request.Subject,
-                Content = request.Content,
-                Metadata = request.Metadata ?? new Dictionary<string, object>()
-            };
 
-            var result = await _notificationService.SendNotificationAsync(request.ChannelType, message);
-            
-            return result ? Ok(new { Success = true }) : BadRequest(new { Success = false });
-        }
-
-        /// <summary>
-        /// Send a notification via multiple channels
-        /// </summary>
-        /// <param name="request">Notification details for multiple channels</param>
-        /// <returns>Results of the send operation for each channel</returns>
-        [HttpPost("send-multi")]
-        public async Task<IActionResult> SendMultiChannelNotification([FromBody] SendMultiChannelRequest request)
-        {
-            var message = new NotificationMessage
-            {
-                Recipient = request.Recipient,
-                Subject = request.Subject,
-                Content = request.Content,
-                Metadata = request.Metadata ?? new Dictionary<string, object>()
-            };
-
-            var results = await _notificationService.SendMultiChannelAsync(request.ChannelTypes, message);
-            
-            return Ok(new { Results = results });
-        }
-
-        /// <summary>
-        /// Test email sending
-        /// </summary>
-        /// <param name="toEmail">Recipient email address</param>
-        /// <returns>Success or failure response</returns>
-        [HttpPost("test-email")]
-        public async Task<IActionResult> TestEmail([FromBody] string toEmail)
+        // GET: api/Notifications
+        [HttpGet]
+        public async Task<IActionResult> GetMyNotifications([FromQuery] int limit = 50)
         {
             try
             {
-                var message = new NotificationMessage
+                var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "UserId")?.Value;
+                int userId;
+                
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out userId))
                 {
-                    Recipient = toEmail,
-                    Subject = "Test Email from HMS",
-                    Content = "This is a test email from Hospital Management System"
-                };
+                    // If no UserId, try to get from DoctorId
+                    var doctorIdClaim = User.Claims.FirstOrDefault(c => c.Type == "DoctorId")?.Value;
+                    if (!string.IsNullOrEmpty(doctorIdClaim) && int.TryParse(doctorIdClaim, out int doctorId))
+                    {
+                        var userIdFromDoctor = await _notificationRepository.GetUserIdFromDoctorIdAsync(doctorId);
+                        if (userIdFromDoctor == null)
+                        {
+                            return BadRequest(new { message = "User ID not found for doctor" });
+                        }
+                        userId = userIdFromDoctor.Value;
+                    }
+                    else
+                    {
+                        return BadRequest(new { message = "User ID not found in token" });
+                    }
+                }
 
-                var result = await _notificationService.SendNotificationAsync("Email", message);
-                return Ok(new { Success = result, Message = "Email test completed" });
+                var notifications = await _notificationRepository.GetUserNotificationsAsync(userId, limit);
+                return Ok(notifications);
             }
             catch (Exception ex)
             {
-                return BadRequest(new { Success = false, Message = ex.Message });
+                _logger.LogError(ex, "Error fetching notifications");
+                return StatusCode(500, new { message = "Lỗi khi tải thông báo" });
+            }
+        }
+
+        // GET: api/Notifications/unread
+        [HttpGet("unread")]
+        public async Task<IActionResult> GetUnreadNotifications()
+        {
+            try
+            {
+                var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "UserId")?.Value;
+                int userId;
+                
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out userId))
+                {
+                    // If no UserId, try to get from DoctorId
+                    var doctorIdClaim = User.Claims.FirstOrDefault(c => c.Type == "DoctorId")?.Value;
+                    if (!string.IsNullOrEmpty(doctorIdClaim) && int.TryParse(doctorIdClaim, out int doctorId))
+                    {
+                        var userIdFromDoctor = await _notificationRepository.GetUserIdFromDoctorIdAsync(doctorId);
+                        if (userIdFromDoctor == null)
+                        {
+                            return BadRequest(new { message = "User ID not found for doctor" });
+                        }
+                        userId = userIdFromDoctor.Value;
+                    }
+                    else
+                    {
+                        return BadRequest(new { message = "User ID not found in token" });
+                    }
+                }
+
+                var notifications = await _notificationRepository.GetUnreadNotificationsAsync(userId);
+                return Ok(new 
+                { 
+                    count = notifications.Count,
+                    notifications 
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching unread notifications");
+                return StatusCode(500, new { message = "Lỗi khi tải thông báo" });
+            }
+        }
+
+        // PUT: api/Notifications/{id}/mark-read
+        [HttpPut("{id}/mark-read")]
+        public async Task<IActionResult> MarkAsRead(int id)
+        {
+            try
+            {
+                await _notificationRepository.MarkAsReadAsync(id);
+                return Ok(new { message = "Đã đánh dấu đã đọc" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error marking notification as read");
+                return StatusCode(500, new { message = "Lỗi khi cập nhật" });
+            }
+        }
+
+        // PUT: api/Notifications/mark-all-read
+        [HttpPut("mark-all-read")]
+        public async Task<IActionResult> MarkAllAsRead()
+        {
+            try
+            {
+                var userIdClaim = User.Claims.FirstOrDefault(c => c.Type == "UserId")?.Value;
+                int userId;
+                
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out userId))
+                {
+                    // If no UserId, try to get from DoctorId
+                    var doctorIdClaim = User.Claims.FirstOrDefault(c => c.Type == "DoctorId")?.Value;
+                    if (!string.IsNullOrEmpty(doctorIdClaim) && int.TryParse(doctorIdClaim, out int doctorId))
+                    {
+                        var userIdFromDoctor = await _notificationRepository.GetUserIdFromDoctorIdAsync(doctorId);
+                        if (userIdFromDoctor == null)
+                        {
+                            return BadRequest(new { message = "User ID not found for doctor" });
+                        }
+                        userId = userIdFromDoctor.Value;
+                    }
+                    else
+                    {
+                        return BadRequest(new { message = "User ID not found in token" });
+                    }
+                }
+
+                await _notificationRepository.MarkAllAsReadAsync(userId);
+                return Ok(new { message = "Đã đánh dấu tất cả đã đọc" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error marking all notifications as read");
+                return StatusCode(500, new { message = "Lỗi khi cập nhật" });
+            }
+        }
+
+        // DELETE: api/Notifications/{id}
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteNotification(int id)
+        {
+            try
+            {
+                await _notificationRepository.DeleteAsync(id);
+                return Ok(new { message = "Đã xóa thông báo" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting notification");
+                return StatusCode(500, new { message = "Lỗi khi xóa" });
             }
         }
     }

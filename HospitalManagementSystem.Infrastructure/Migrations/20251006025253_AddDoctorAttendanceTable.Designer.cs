@@ -3,6 +3,7 @@ using System;
 using HospitalManagementSystem.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace HospitalManagementSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(HospitalDbContext))]
-    partial class HospitalDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251006025253_AddDoctorAttendanceTable")]
+    partial class AddDoctorAttendanceTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -305,7 +308,8 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
 
                     b.Property<string>("Diagnosis")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<int>("DoctorId")
                         .HasColumnType("integer");
@@ -317,8 +321,8 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasDefaultValue(0m);
 
                     b.Property<string>("Notes")
-                        .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<decimal>("OtherFee")
                         .ValueGeneratedOnAdd()
@@ -343,12 +347,12 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasDefaultValue("Unpaid");
 
                     b.Property<string>("Prescription")
-                        .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<string>("Symptoms")
-                        .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<decimal>("TestFee")
                         .ValueGeneratedOnAdd()
@@ -357,8 +361,8 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasDefaultValue(0m);
 
                     b.Property<string>("Treatment")
-                        .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

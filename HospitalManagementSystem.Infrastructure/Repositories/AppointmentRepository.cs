@@ -242,7 +242,8 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                     .Where(a => a.DoctorId == doctorId && 
                                a.Date >= startTime && 
                                a.Date <= endTime &&
-                               a.Status != "Cancelled");
+                               a.Status != "Cancelled" &&
+                               a.Status != "ExpiredPayment");
 
                 if (excludeAppointmentId.HasValue)
                 {
@@ -261,6 +262,18 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 _logger.LogError(ex, "Error checking for conflicting appointments");
                 throw;
             }
+        }
+
+        public async Task<List<Appointment>> GetDoctorAppointmentsAsync(int doctorId, DateTime startDate, DateTime endDate)
+        {
+            return await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Where(a => a.DoctorId == doctorId && 
+                           a.Date >= startDate && 
+                           a.Date < endDate)
+                .OrderBy(a => a.Date)
+                .ToListAsync();
         }
     }
 }

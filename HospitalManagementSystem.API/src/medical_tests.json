@@ -1,0 +1,51 @@
+[
+  {
+    "category": "Xét nghiệm trong phòng thí nghiệm",
+    "tests": [
+      { "testName": "Công thức máu toàn phần (Complete Blood Count - CBC)", "subcategory": "Huyết học", "fee": 80000 },
+      { "testName": "Đường huyết lúc đói (Blood Glucose - Fasting)", "subcategory": "Sinh hoá", "fee": 70000 },
+      { "testName": "Kiểm tra chức năng gan", "subcategory": "Sinh hoá", "fee": 120000 },
+      { "testName": "Kiểm tra chức năng thận", "subcategory": "Sinh hoá", "fee": 100000 },
+      { "testName": "Kiểm tra mỡ máu (Lipid Profile)", "subcategory": "Sinh hoá", "fee": 120000 },
+      { "testName": "Phân tích nước tiểu tổng quát", "subcategory": "Nước tiểu học", "fee": 60000 },
+      { "testName": "Phân tích phân tổng quát", "subcategory": "Vi sinh", "fee": 60000 },
+      { "testName": "Định lượng HbA1c", "subcategory": "Sinh hoá", "fee": 90000 },
+      { "testName": "Kiểm tra chức năng tuyến giáp (T3, T4, TSH)", "subcategory": "Sinh hoá", "fee": 150000 },
+      { "testName": "Xét nghiệm điện giải (Electrolyte Panel)", "subcategory": "Sinh hoá", "fee": 100000 }
+    ]
+  },
+  {
+    "category": "Chẩn đoán hình ảnh",
+    "tests": [
+      { "testName": "Chụp X-quang ngực (Chest X-Ray)", "subcategory": "Chẩn đoán hình ảnh", "fee": 150000 },
+      { "testName": "Chụp X-quang bụng (Abdominal X-Ray)", "subcategory": "Chẩn đoán hình ảnh", "fee": 150000 },
+      { "testName": "Siêu âm ổ bụng (Ultrasound Abdomen)", "subcategory": "Chẩn đoán hình ảnh", "fee": 200000 },
+      { "testName": "Siêu âm vùng chậu (Ultrasound Pelvis)", "subcategory": "Chẩn đoán hình ảnh", "fee": 200000 },
+      { "testName": "Chụp CT vùng đầu (CT Scan Head)", "subcategory": "Chẩn đoán hình ảnh", "fee": 800000 },
+      { "testName": "Chụp CT vùng ngực (CT Scan Chest)", "subcategory": "Chẩn đoán hình ảnh", "fee": 900000 },
+      { "testName": "Chụp MRI não (MRI Brain)", "subcategory": "Chẩn đoán hình ảnh", "fee": 1500000 },
+      { "testName": "Chụp MRI cột sống (MRI Spine)", "subcategory": "Chẩn đoán hình ảnh", "fee": 1700000 },
+      { "testName": "Chụp nhũ ảnh (Mammography)", "subcategory": "Chẩn đoán hình ảnh", "fee": 300000 },
+      { "testName": "Siêu âm tim (Echocardiography)", "subcategory": "Tim mạch", "fee": 350000 }
+    ]
+  },
+  {
+    "category": "Xét nghiệm tim mạch",
+    "tests": [
+      { "testName": "Điện tâm đồ (ECG)", "subcategory": "Tim mạch", "fee": 100000 },
+      { "testName": "Siêu âm tim 2D (2D Echo)", "subcategory": "Tim mạch", "fee": 350000 },
+      { "testName": "Nghiệm pháp gắng sức (Treadmill Test - TMT)", "subcategory": "Tim mạch", "fee": 500000 },
+      { "testName": "Đo điện tim liên tục 24 giờ (Holter Monitoring)", "subcategory": "Tim mạch", "fee": 800000 }
+    ]
+  },
+  {
+    "category": "Các xét nghiệm chuyên khoa khác",
+    "tests": [
+      { "testName": "Kiểm tra thị lực", "subcategory": "Mắt", "fee": 50000 },
+      { "testName": "Đo thính lực (Audiometry)", "subcategory": "Tai - Mũi - Họng", "fee": 80000 },
+      { "testName": "Đo chức năng hô hấp (Spirometry)", "subcategory": "Hô hấp", "fee": 120000 },
+      { "testName": "Phết tế bào cổ tử cung (Pap Smear)", "subcategory": "Phụ khoa", "fee": 120000 },
+      { "testName": "Thử thai bằng nước tiểu", "subcategory": "Phòng xét nghiệm", "fee": 40000 }
+    ]
+  }
+]

@@ -86,27 +86,27 @@ namespace HospitalManagementSystem.Infrastructure.RabbitMQ
             _channel.BasicConsume(_queueName, autoAck: false, consumer: appointmentConsumer);
 
             // Billing consumer
-            var billingConsumer = new EventingBasicConsumer(_channel);
-            billingConsumer.Received += async (model, ea) =>
-            {
-                try
-                {
-                    var body = ea.Body.ToArray();
-                    var message = Encoding.UTF8.GetString(body);
-                    var routingKey = ea.RoutingKey;
+            // var billingConsumer = new EventingBasicConsumer(_channel);
+            // billingConsumer.Received += async (model, ea) =>
+            // {
+            //     try
+            //     {
+            //         var body = ea.Body.ToArray();
+            //         var message = Encoding.UTF8.GetString(body);
+            //         var routingKey = ea.RoutingKey;
 
-                    _logger.LogInformation("Received billing message: {RoutingKey}", routingKey);
-                    await ProcessBillingMessage(routingKey, message);
+            //         _logger.LogInformation("Received billing message: {RoutingKey}", routingKey);
+            //         await ProcessBillingMessage(routingKey, message);
 
-                    _channel.BasicAck(ea.DeliveryTag, multiple: false);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error processing billing message");
-                    _channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: true);
-                }
-            };
-            _channel.BasicConsume(_billingQueueName, autoAck: false, consumer: billingConsumer);
+            //         _channel.BasicAck(ea.DeliveryTag, multiple: false);
+            //     }
+            //     catch (Exception ex)
+            //     {
+            //         _logger.LogError(ex, "Error processing billing message");
+            //         _channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: true);
+            //     }
+            // };
+            // _channel.BasicConsume(_billingQueueName, autoAck: false, consumer: billingConsumer);
 
             // Keep service running
             while (!stoppingToken.IsCancellationRequested)

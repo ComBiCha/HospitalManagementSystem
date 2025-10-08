@@ -13,5 +13,6 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<bool> DeleteAsync(int id);
         Task<bool> IsDoctorWorkingAsync(int doctorId, DateTime date);
         Task<IEnumerable<Doctor>> GetAvailableDoctorsAsync(DateTime appointmentDate, string specialty);
+        Task<List<DoctorShift>> GetDoctorShiftsAsync(int doctorId);
     }
 }

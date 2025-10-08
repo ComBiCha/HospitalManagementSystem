@@ -64,7 +64,7 @@ namespace HospitalManagementSystem.API.Controllers
                 var timeSlots = new List<TimeSlotDto>();
                 var dayOfWeek = date.DayOfWeek;
 
-                for (int hour = 8; hour < 17; hour++)
+                for (int hour = 8; hour <= 16; hour++)
                 {
                     for (int minute = 0; minute < 60; minute += 30)
                     {

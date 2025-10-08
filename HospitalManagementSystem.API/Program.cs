@@ -88,6 +88,12 @@ builder.Services.AddScoped<NotificationServiceManager>();
 
 builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
 
+builder.Services.AddScoped<IDoctorAttendanceRepository, DoctorAttendanceRepository>();
+builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+builder.Services.AddScoped<DoctorAttendanceNotificationService>();
+
+builder.Services.AddScoped<IMedicalRecordRepository, MedicalRecordRepository>();
+
 // Redis ConnectionMultiplexer
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
 builder.Services.AddSingleton<IConnectionMultiplexer>(provider =>
@@ -198,6 +204,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = new[] { new AllowAllAuthorizationFilter() }
+});
+
 app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
@@ -206,12 +218,29 @@ app.MapGrpcService<PatientGrpcService>();
 app.MapGrpcService<DoctorGrpcService>();
 app.MapGrpcService<AuthGrpcService>();
 app.MapHealthChecks("/health");
-app.UseHangfireDashboard("/hangfire", new DashboardOptions
+
+// Initialize attendance notification recurring jobs
+using (var scope = app.Services.CreateScope())
 {
-    Authorization = new[] { new HangfireAuthorizationFilter() }
-});
+    var attendanceService = scope.ServiceProvider.GetRequiredService<DoctorAttendanceNotificationService>();
+    attendanceService.InitializeRecurringJobs();
+    
+    // Schedule today's notifications immediately on startup
+    await attendanceService.ScheduleCheckInNotificationsAsync();
+}
+
 app.Run();
 
+// Allow all access to Hangfire Dashboard (for development only)
+public class AllowAllAuthorizationFilter : IDashboardAuthorizationFilter
+{
+    public bool Authorize(DashboardContext context)
+    {
+        return true; // Allow all access for testing
+    }
+}
+
+// For production use this:
 public class HangfireAuthorizationFilter : IDashboardAuthorizationFilter
 {
     public bool Authorize(DashboardContext context)

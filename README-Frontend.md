@@ -92,3 +92,6 @@ kubectl get svc hms-frontend-service
 
 
 
+
+
+

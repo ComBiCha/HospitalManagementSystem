@@ -27,6 +27,7 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<PatientIdentifiers> PatientIdentifiers { get; set; }
         public DbSet<DoctorShift> DoctorShifts { get; set; } 
+        public DbSet<DoctorAttendance> DoctorAttendances { get; set; } // Added DbSet for DoctorAttendance
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -232,7 +233,7 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 entity.Property(e => e.AppointmentId).IsRequired();
                 entity.Property(e => e.PatientId).IsRequired();
                 entity.Property(e => e.DoctorId).IsRequired();
-                entity.Property(e => e.Diagnosis).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Diagnosis).IsRequired().HasColumnType("text"); // Changed to text (unlimited)
                 entity.Property(e => e.ConsultationFee).HasPrecision(18, 2).HasDefaultValue(200000);
                 entity.Property(e => e.MedicineFee).HasPrecision(18, 2).HasDefaultValue(0);
                 entity.Property(e => e.TestFee).HasPrecision(18, 2).HasDefaultValue(0);

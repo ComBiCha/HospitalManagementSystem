@@ -18,22 +18,17 @@ namespace HospitalManagementSystem.Domain.Entities
         [Required]
         public int DoctorId { get; set; }
 
-        // Diagnosis information
+        // Diagnosis information - stored as JSON arrays/strings
         [Required]
-        [StringLength(500)]
-        public string Diagnosis { get; set; } = string.Empty; // Chẩn đoán
+        public string Diagnosis { get; set; } = "[]"; // JSON array from diagnoses.json
 
-        [StringLength(2000)]
-        public string? Symptoms { get; set; } // Triệu chứng
+        public string Symptoms { get; set; } = "[]"; // JSON array from symptoms.json
 
-        [StringLength(2000)]
-        public string? Treatment { get; set; } // Điều trị
+        public string Treatment { get; set; } = string.Empty; // Free text
 
-        [StringLength(2000)]
-        public string? Prescription { get; set; } // Đơn thuốc
+        public string Prescription { get; set; } = "[]"; // JSON array from drugs.json + medical_tests.json
 
-        [StringLength(2000)]
-        public string? Notes { get; set; } // Ghi chú
+        public string Notes { get; set; } = string.Empty; // Free text
 
         // Medical costs
         [Required]
@@ -50,11 +45,16 @@ namespace HospitalManagementSystem.Domain.Entities
         public decimal OtherFee { get; set; } = 0; // Phí khác
 
         // Computed total
+        [NotMapped]
         public decimal TotalFee => ConsultationFee + MedicineFee + TestFee + OtherFee;
 
         // Payment status
         public decimal PaidAmount { get; set; } = 0; // Số tiền đã thanh toán (bao gồm tạm ứng)
+        
+        [NotMapped]
         public decimal RemainingAmount => TotalFee - PaidAmount; // Còn nợ
+        
+        [NotMapped]
         public bool IsFullyPaid => PaidAmount >= TotalFee;
 
         public string PaymentStatus { get; set; } = "Unpaid"; // Unpaid, PartiallyPaid, FullyPaid

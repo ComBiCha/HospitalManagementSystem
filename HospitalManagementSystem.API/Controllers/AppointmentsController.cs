@@ -10,6 +10,7 @@ using HospitalManagementSystem.Domain.RabbitMQ;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.Domain.Events;
 using Hangfire;
+using Microsoft.EntityFrameworkCore;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -24,6 +25,7 @@ namespace HospitalManagementSystem.API.Controllers
         private readonly IPaymentRepository _paymentRepository;
         private readonly IRabbitMQService _rabbitMQService;
         private readonly ILogger<AppointmentsController> _logger;
+        private readonly HospitalDbContext _context;
 
         public AppointmentsController(
             IAppointmentRepository appointmentRepository,
@@ -31,7 +33,8 @@ namespace HospitalManagementSystem.API.Controllers
             IDoctorRepository doctorRepository,
             IPaymentRepository paymentRepository,
             IRabbitMQService rabbitMQService, 
-            ILogger<AppointmentsController> logger)
+            ILogger<AppointmentsController> logger,
+            HospitalDbContext context)
         {
             _appointmentRepository = appointmentRepository;
             _patientRepository = patientRepository;
@@ -39,6 +42,7 @@ namespace HospitalManagementSystem.API.Controllers
             _paymentRepository = paymentRepository;
             _rabbitMQService = rabbitMQService; 
             _logger = logger;
+            _context = context;
         }
 
         /// <summary>
@@ -189,6 +193,87 @@ namespace HospitalManagementSystem.API.Controllers
             {
                 _logger.LogError(ex, "Error getting appointments for doctor: {DoctorId}", doctorId);
                 return StatusCode(500, "Internal server error");
+            }
+        }
+
+        // GET: api/Appointments/my-appointments
+        [HttpGet("my-appointments")]
+        [Authorize(Roles = "Doctor")]
+        public async Task<ActionResult<object>> GetMyAppointments(
+            [FromQuery] DateTime? startDate, 
+            [FromQuery] DateTime? endDate,
+            [FromQuery] string? status,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            try
+            {
+                var doctorIdClaim = User.Claims.FirstOrDefault(c => c.Type == "DoctorId")?.Value;
+                if (string.IsNullOrEmpty(doctorIdClaim) || !int.TryParse(doctorIdClaim, out int doctorId))
+                {
+                    return BadRequest(new { message = "Doctor ID not found in token" });
+                }
+
+                // Default to current week if no dates provided
+                var start = startDate ?? DateTime.UtcNow.Date;
+                var end = endDate ?? DateTime.UtcNow.Date.AddDays(7);
+
+                _logger.LogInformation("Fetching appointments for doctor {DoctorId} from {Start} to {End}, page {Page}, status: {Status}", 
+                    doctorId, start, end, page, status ?? "all");
+
+                // Build query
+                var query = _context.Appointments
+                    .Include(a => a.Patient)
+                    .Include(a => a.Doctor)
+                    .Where(a => a.DoctorId == doctorId && a.Date >= start && a.Date <= end)
+                    // Exclude Cancelled and ExpiredPayment appointments - doctors don't need to see these
+                    .Where(a => a.Status != "Cancelled" && a.Status != "ExpiredPayment");
+
+                // Filter by status if provided
+                if (!string.IsNullOrEmpty(status) && status != "all")
+                {
+                    query = query.Where(a => a.Status == status);
+                }
+
+                // Get total count before pagination
+                var totalCount = await query.CountAsync();
+
+                // Apply pagination
+                var appointments = await query
+                    .OrderBy(a => a.Date)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+                _logger.LogInformation("Found {Count} appointments (total: {Total}, page {Page}/{TotalPages})", 
+                    appointments.Count, totalCount, page, totalPages);
+
+                return Ok(new
+                {
+                    appointments,
+                    pagination = new
+                    {
+                        currentPage = page,
+                        pageSize,
+                        totalCount,
+                        totalPages,
+                        hasNextPage = page < totalPages,
+                        hasPreviousPage = page > 1
+                    },
+                    filters = new
+                    {
+                        startDate = start,
+                        endDate = end,
+                        status = status ?? "all"
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching doctor appointments");
+                return StatusCode(500, new { message = "Error fetching appointments" });
             }
         }
 

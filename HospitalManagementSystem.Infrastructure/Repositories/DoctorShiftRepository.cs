@@ -181,5 +181,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
 
             return availableDoctors;
         }
+
+        public async Task<List<DoctorShift>> GetDoctorShiftsAsync(int doctorId)
+        {
+            return await _context.DoctorShifts
+                .Where(s => s.DoctorId == doctorId)
+                .ToListAsync();
+        }
     }
 }

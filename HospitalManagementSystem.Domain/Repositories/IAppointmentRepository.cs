@@ -14,5 +14,6 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<IEnumerable<Appointment>> GetByDoctorIdAsync(int doctorId);
         Task<IEnumerable<Appointment>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
         Task<bool> HasConflictingAppointmentAsync(int doctorId, DateTime appointmentDate, int? excludeAppointmentId = null);
+        Task<List<Appointment>> GetDoctorAppointmentsAsync(int doctorId, DateTime startDate, DateTime endDate);
     }
 }
