@@ -53,7 +53,7 @@ export default function AuthModal({ isOpen, onClose, defaultMode = 'login' }: Au
       if (userRole === 'Patient') {
         router.push('/patient/portal')
       } else if (userRole === 'Doctor') {
-        router.push('/doctor/dashboard')
+        router.push('/doctor/portal')
       } else if (userRole === 'Admin') {
         router.push('/admin/dashboard')
       } else {

@@ -59,6 +59,7 @@ export interface Appointment {
   createdAt: string
   updatedAt: string
   doctor?: Doctor
+  patient?: Patient
 }
 
 // Doctor types
@@ -67,6 +68,16 @@ export interface Doctor {
   name: string
   specialty: string
   email: string
+  status: number
+  createdAt: string
+  updatedAt: string
+  isActive: boolean
+  isOnDuty: boolean
+  isOffDuty: boolean
+  isOnLeave: boolean
+  isOnCall: boolean
+  isInSurgery: boolean
+  isOnVacation: boolean
 }
 
 // Auth types
@@ -116,4 +127,61 @@ export interface PatientIdentifierFormData {
   ehrSystem: number
   externalId: string
   identifierType: string
+}
+
+// DoctorShift types
+export interface DoctorShift {
+  id: number;
+  doctorId: number;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// DoctorAttendance types
+export interface DoctorAttendance {
+  id: number;
+  doctorId: number;
+  shiftId: number;
+  shiftDate: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  status: 'Scheduled' | 'CheckedIn' | 'CheckedOut' | 'Absent';
+  checkInNote?: string;
+  checkOutNote?: string;
+  shift?: DoctorShift;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// CheckInStatus types
+export interface CheckInStatus {
+  canCheckIn: boolean;
+  isCheckedIn: boolean;
+  canCheckOut?: boolean;
+  message: string;
+  shift?: DoctorShift;
+  allShifts?: DoctorShift[];
+  attendance?: DoctorAttendance;
+  earliestCheckInTime?: string;
+  shiftStartTime?: string;
+  isCompleted?: boolean;
+}
+
+// Notification types
+export interface Notification {
+  id: number;
+  userId: number;
+  recipient: string;
+  subject: string; // Title
+  content: string; // Message
+  channelType: string;
+  status: string;
+  isRead: boolean;
+  metadata?: string; // Contains type and data
+  createdAt: string;
+  sentAt?: string;
 }

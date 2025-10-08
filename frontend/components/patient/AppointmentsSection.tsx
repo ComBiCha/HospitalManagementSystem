@@ -178,9 +178,12 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
   const handleBookAppointment = async () => {
     if (!patientId || !selectedDoctor || !selectedDate || !selectedTime) return;
     
+    // Filter valid appointments - exclude Cancelled and ExpiredPayment
     const appointmentsOnDate = appointments.filter(apt => {
       const aptDate = new Date(apt.date).toISOString().split('T')[0];
-      return aptDate === selectedDate && apt.status !== 'Cancelled' && apt.status != 'PaymentExpired';
+      return aptDate === selectedDate && 
+             apt.status !== 'Cancelled' && 
+             apt.status !== 'ExpiredPayment';
     });
     
     if (appointmentsOnDate.length >= 2) {

@@ -114,3 +114,43 @@ export const authApi = {
   validateToken: (token: string) => api.post('/auth/validate', { token }),
   getProfile: () => api.get<UserInfo>('/auth/profile'),
 }
+
+// Doctor Attendance APIs
+export const doctorAttendanceApi = {
+  getCheckInStatus: () => api.get('/DoctorAttendance/check-in-status'),
+  checkIn: (note?: string) => api.post('/DoctorAttendance/check-in', { note }),
+  checkOut: (note?: string) => api.post('/DoctorAttendance/check-out', { note }),
+  getTodayAttendance: () => api.get('/DoctorAttendance/today'),
+  getMyAttendances: (startDate?: string, endDate?: string) => 
+    api.get('/DoctorAttendance/my-attendances', { 
+      params: { startDate, endDate } 
+    }),
+}
+
+// Notification APIs
+export const notificationApi = {
+  getMyNotifications: (limit?: number) => 
+    api.get('/Notifications', { params: { limit } }),
+  getUnread: () => api.get('/Notifications/unread'),
+  markAsRead: (id: number) => api.put(`/Notifications/${id}/mark-read`),
+  markAllAsRead: () => api.put('/Notifications/mark-all-read'),
+  deleteNotification: (id: number) => api.delete(`/Notifications/${id}`),
+};
+
+// Doctor APIs
+export const doctorApi = {
+  getById: (id: number) => api.get(`/Doctors/${id}`),
+  getAll: () => api.get('/Doctors'),
+  getMyProfile: () => api.get('/Doctors/my-profile'),
+};
+
+// Appointment APIs
+export const appointmentApi = {
+  getMyAppointments: (startDate?: string, endDate?: string) => 
+    api.get('/Appointments/my-appointments', { 
+      params: { startDate, endDate } 
+    }),
+  getById: (id: number) => api.get(`/Appointments/${id}`),
+  updateStatus: (id: number, status: string) => 
+    api.put(`/Appointments/${id}/status`, { status }),
+};
