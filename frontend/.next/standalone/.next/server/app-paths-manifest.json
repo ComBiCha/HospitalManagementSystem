@@ -1,8 +1,8 @@
 {
-  "/_not-found": "app/_not-found.js",
-  "/doctor/portal/page": "app/doctor/portal/page.js",
-  "/page": "app/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
   "/doctor/examination/[id]/page": "app/doctor/examination/[id]/page.js",
+  "/page": "app/page.js",
+  "/doctor/portal/page": "app/doctor/portal/page.js",
   "/profile/page": "app/profile/page.js",
   "/patient/portal/page": "app/patient/portal/page.js"
 }

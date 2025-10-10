@@ -1,11 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
 using HospitalManagementSystem.Domain.Entities;
 using HospitalManagementSystem.Domain.Repositories;
-using HospitalManagementSystem.Infrastructure.Persistence;
+using HospitalManagementSystem.Application.DTOs.MedicalRecord;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -14,30 +12,38 @@ namespace HospitalManagementSystem.API.Controllers
     [Authorize]
     public class MedicalRecordsController : ControllerBase
     {
-        private readonly HospitalDbContext _context;
         private readonly IMedicalRecordRepository _medicalRecordRepository;
         private readonly IAppointmentRepository _appointmentRepository;
+        private readonly IPrescriptionItemRepository _prescriptionItemRepository;
+        private readonly IMedicalRecordHistoryRepository _medicalRecordHistoryRepository;
+        private readonly MedicalRecordApplicationService _medicalRecordApplicationService;
+        private readonly AppointmentExaminationService _appointmentExaminationService;
         private readonly IDoctorAttendanceRepository _attendanceRepository;
         private readonly ILogger<MedicalRecordsController> _logger;
         private readonly IWebHostEnvironment _env;
 
         public MedicalRecordsController(
-            HospitalDbContext context,
             IMedicalRecordRepository medicalRecordRepository,
             IAppointmentRepository appointmentRepository,
+            IPrescriptionItemRepository prescriptionItemRepository,
+            IMedicalRecordHistoryRepository medicalRecordHistoryRepository,
+            MedicalRecordApplicationService medicalRecordApplicationService,
+            AppointmentExaminationService appointmentExaminationService,
             IDoctorAttendanceRepository attendanceRepository,
             ILogger<MedicalRecordsController> logger,
             IWebHostEnvironment env)
         {
-            _context = context;
             _medicalRecordRepository = medicalRecordRepository;
             _appointmentRepository = appointmentRepository;
+            _prescriptionItemRepository = prescriptionItemRepository;
+            _medicalRecordHistoryRepository = medicalRecordHistoryRepository;
+            _medicalRecordApplicationService = medicalRecordApplicationService;
+            _appointmentExaminationService = appointmentExaminationService;
             _attendanceRepository = attendanceRepository;
             _logger = logger;
             _env = env;
         }
 
-        // GET: api/MedicalRecords/by-appointment/{appointmentId}
         [HttpGet("by-appointment/{appointmentId}")]
         [Authorize(Roles = "Doctor")]
         public async Task<IActionResult> GetMedicalRecordByAppointment(int appointmentId)
@@ -50,69 +56,14 @@ namespace HospitalManagementSystem.API.Controllers
                     return BadRequest(new { message = "Doctor ID not found in token" });
                 }
 
-                var medicalRecord = await _medicalRecordRepository.GetByAppointmentIdAsync(appointmentId);
+                var medicalRecordDto = await _medicalRecordApplicationService.GetMedicalRecordByAppointmentAsync(appointmentId, doctorId);
 
-                if (medicalRecord == null)
+                if (medicalRecordDto == null)
                 {
-                    return NotFound(new { message = "Medical record not found for this appointment" });
+                    return NotFound(new { message = "Medical record not found or access denied" });
                 }
 
-                // Verify doctor owns this appointment
-                if (medicalRecord.DoctorId != doctorId)
-                {
-                    return Forbid("You can only view your own medical records");
-                }
-
-                // Calculate paid amount
-                var paidAmount = medicalRecord.Payments
-                    .Where(p => p.Status == "Completed" && 
-                               (p.PaymentType == "Deposit" || p.PaymentType == "FinalPayment"))
-                    .Sum(p => p.Amount);
-
-                // Create DTO
-                var response = new MedicalRecordDto
-                {
-                    Id = medicalRecord.Id,
-                    AppointmentId = medicalRecord.AppointmentId,
-                    PatientId = medicalRecord.PatientId,
-                    DoctorId = medicalRecord.DoctorId,
-                    Diagnosis = medicalRecord.Diagnosis,
-                    Symptoms = medicalRecord.Symptoms,
-                    Treatment = medicalRecord.Treatment,
-                    Prescription = medicalRecord.Prescription,
-                    Notes = medicalRecord.Notes,
-                    ConsultationFee = medicalRecord.ConsultationFee,
-                    MedicineFee = medicalRecord.MedicineFee,
-                    TestFee = medicalRecord.TestFee,
-                    OtherFee = medicalRecord.OtherFee,
-                    PaidAmount = paidAmount,
-                    PaymentStatus = medicalRecord.PaymentStatus,
-                    CreatedAt = medicalRecord.CreatedAt,
-                    UpdatedAt = medicalRecord.UpdatedAt,
-                    Patient = medicalRecord.Patient != null ? new PatientDto
-                    {
-                        Id = medicalRecord.Patient.Id,
-                        Name = medicalRecord.Patient.Name,
-                        Age = medicalRecord.Patient.Age,
-                        Email = medicalRecord.Patient.Email,
-                        Status = medicalRecord.Patient.Status.ToString()
-                    } : null,
-                    Doctor = medicalRecord.Doctor != null ? new DoctorDto
-                    {
-                        Id = medicalRecord.Doctor.Id,
-                        Name = medicalRecord.Doctor.Name,
-                        Specialty = medicalRecord.Doctor.Specialty,
-                        Email = medicalRecord.Doctor.Email
-                    } : null,
-                    Appointment = medicalRecord.Appointment != null ? new SimpleAppointmentDto
-                    {
-                        Id = medicalRecord.Appointment.Id,
-                        Date = medicalRecord.Appointment.Date,
-                        Status = medicalRecord.Appointment.Status
-                    } : null
-                };
-
-                return Ok(response);
+                return Ok(medicalRecordDto);
             }
             catch (Exception ex)
             {
@@ -121,7 +72,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // GET: api/MedicalRecords/can-start-examination/{appointmentId}
         [HttpGet("can-start-examination/{appointmentId}")]
         [Authorize(Roles = "Doctor")]
         public async Task<IActionResult> CanStartExamination(int appointmentId)
@@ -134,91 +84,14 @@ namespace HospitalManagementSystem.API.Controllers
                     return BadRequest(new { message = "Doctor ID not found in token" });
                 }
 
-                var appointment = await _context.Appointments
-                    .Include(a => a.Patient)
-                    .Include(a => a.Doctor)
-                    .Include(a => a.MedicalRecord)
-                    .FirstOrDefaultAsync(a => a.Id == appointmentId);
+                var result = await _appointmentExaminationService.CanStartExaminationAsync(appointmentId, doctorId);
 
-                if (appointment == null)
-                {
-                    return NotFound(new { message = "Appointment not found" });
-                }
+                if (!result.CanStart && result.Message == "Appointment not found")
+                    return NotFound(new { message = result.Message });
+                if (!result.CanStart && result.Message == "You can only examine your own appointments")
+                    return Forbid(result.Message);
 
-                if (appointment.DoctorId != doctorId)
-                {
-                    return Forbid("You can only examine your own appointments");
-                }
-
-                // Check appointment status first - allow viewing completed records without check-in
-                if (appointment.Status == "Completed")
-                {
-                    return Ok(new { 
-                        canStart = true,  // Cho phép xem lại
-                        message = "Đã hoàn thành khám bệnh - Xem hồ sơ",
-                        medicalRecordId = appointment.MedicalRecord?.Id,
-                        isReadOnly = true  // Frontend sẽ hiển thị read-only mode
-                    });
-                }
-
-                // Check if doctor is checked in (only for active appointments)
-                var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-                var nowVn = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
-                var today = nowVn.Date;
-
-                var todayUtc = DateTime.SpecifyKind(today, DateTimeKind.Utc);
-                var activeAttendance = await _context.DoctorAttendances
-                    .FirstOrDefaultAsync(a => a.DoctorId == doctorId && 
-                                             a.ShiftDate == todayUtc && 
-                                             a.CheckInTime != null && 
-                                             a.CheckOutTime == null);
-
-                if (activeAttendance == null)
-                {
-                    return Ok(new { 
-                        canStart = false, 
-                        message = "Bác sĩ chưa check-in!" 
-                    });
-                }
-
-                // Check if appointment time is within 10 minutes
-                var appointmentTime = appointment.Date;
-                var tenMinutesBefore = appointmentTime.AddMinutes(-10);
-                var nowUtc = DateTime.UtcNow;
-
-                if (nowUtc < tenMinutesBefore)
-                {
-                    return Ok(new { 
-                        canStart = false, 
-                        message = $"Chỉ có thể bắt đầu khám từ {TimeZoneInfo.ConvertTimeFromUtc(tenMinutesBefore, vnTimeZone):HH:mm}" 
-                    });
-                }
-
-                // Check appointment status for active cases
-                if (appointment.Status == "Hospitalized")
-                {
-                    return Ok(new { 
-                        canStart = true, 
-                        message = "Bệnh nhân đang nhập viện - có thể tiếp tục điều trị",
-                        medicalRecordId = appointment.MedicalRecord?.Id,
-                        isReadOnly = false
-                    });
-                }
-
-                if (appointment.Status != "Scheduled" && appointment.Status != "InProgress")
-                {
-                    return Ok(new { 
-                        canStart = false, 
-                        message = $"Appointment status: {appointment.Status}" 
-                    });
-                }
-
-                return Ok(new { 
-                    canStart = true, 
-                    message = "Có thể bắt đầu khám",
-                    medicalRecordId = appointment.MedicalRecord?.Id,
-                    isReadOnly = false
-                });
+                return Ok(result);
             }
             catch (Exception ex)
             {
@@ -227,7 +100,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // POST: api/MedicalRecords/start-examination
         [HttpPost("start-examination")]
         [Authorize(Roles = "Doctor")]
         public async Task<IActionResult> StartExamination([FromBody] StartExaminationRequest request)
@@ -240,79 +112,21 @@ namespace HospitalManagementSystem.API.Controllers
                     return BadRequest(new { message = "Doctor ID not found in token" });
                 }
 
-                var appointment = await _appointmentRepository.GetByIdAsync(request.AppointmentId);
-                if (appointment == null)
+                var (message, medicalRecord) = await _appointmentExaminationService.StartExaminationAsync(request.AppointmentId, doctorId);
+
+                if (medicalRecord == null)
                 {
-                    return NotFound(new { message = "Appointment not found" });
+                    if (message == "Appointment not found")
+                        return NotFound(new { message });
+                    if (message == "You can only examine your own appointments")
+                        return Forbid(message);
+                    return Ok(new { message });
                 }
 
-                if (appointment.DoctorId != doctorId)
+                return Ok(new
                 {
-                    return Forbid("You can only examine your own appointments");
-                }
-
-                // Check if medical record already exists
-                var existingRecord = await _medicalRecordRepository.GetByAppointmentIdAsync(request.AppointmentId);
-                if (existingRecord != null)
-                {
-                    return Ok(new { 
-                        message = "Medical record already exists",
-                        medicalRecord = existingRecord
-                    });
-                }
-
-                // Create new draft medical record
-                var medicalRecord = new MedicalRecord
-                {
-                    AppointmentId = appointment.Id,
-                    PatientId = appointment.PatientId,
-                    DoctorId = doctorId,
-                    Diagnosis = "[]",
-                    Symptoms = "[]",
-                    Treatment = "",
-                    Prescription = "[]",
-                    Notes = "",
-                    ConsultationFee = 200000,
-                    MedicineFee = 0,
-                    TestFee = 0,
-                    OtherFee = 0,
-                    PaidAmount = 0,
-                    PaymentStatus = "Unpaid",
-                    CreatedAt = DateTime.UtcNow
-                };
-
-                var createdRecord = await _medicalRecordRepository.CreateAsync(medicalRecord);
-
-                // Update appointment status to InProgress
-                appointment.Status = "InProgress";
-                appointment.UpdatedAt = DateTime.UtcNow;
-                await _appointmentRepository.UpdateAsync(appointment);
-
-                // Return DTO to avoid circular reference
-                var response = new MedicalRecordDto
-                {
-                    Id = createdRecord.Id,
-                    AppointmentId = createdRecord.AppointmentId,
-                    PatientId = createdRecord.PatientId,
-                    DoctorId = createdRecord.DoctorId,
-                    Diagnosis = createdRecord.Diagnosis,
-                    Symptoms = createdRecord.Symptoms,
-                    Treatment = createdRecord.Treatment,
-                    Prescription = createdRecord.Prescription,
-                    Notes = createdRecord.Notes,
-                    ConsultationFee = createdRecord.ConsultationFee,
-                    MedicineFee = createdRecord.MedicineFee,
-                    TestFee = createdRecord.TestFee,
-                    OtherFee = createdRecord.OtherFee,
-                    PaidAmount = createdRecord.PaidAmount,
-                    PaymentStatus = createdRecord.PaymentStatus,
-                    CreatedAt = createdRecord.CreatedAt,
-                    UpdatedAt = createdRecord.UpdatedAt
-                };
-
-                return Ok(new { 
-                    message = "Bắt đầu khám bệnh thành công",
-                    medicalRecord = response
+                    message,
+                    medicalRecord
                 });
             }
             catch (Exception ex)
@@ -322,70 +136,20 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // GET: api/MedicalRecords/{id}
         [HttpGet("{id}")]
         [Authorize(Roles = "Doctor")]
         public async Task<IActionResult> GetMedicalRecord(int id)
         {
             try
             {
-                var medicalRecord = await _medicalRecordRepository.GetByIdAsync(id);
+                var medicalRecordDto = await _medicalRecordApplicationService.GetMedicalRecordByIdAsync(id);
 
-                if (medicalRecord == null)
+                if (medicalRecordDto == null)
                 {
                     return NotFound(new { message = "Medical record not found" });
                 }
 
-                // Calculate paid amount from payments
-                var paidAmount = medicalRecord.Payments
-                    .Where(p => p.Status == "Completed" && 
-                               (p.PaymentType == "Deposit" || p.PaymentType == "FinalPayment"))
-                    .Sum(p => p.Amount);
-
-                // Create DTO to avoid circular reference
-                var response = new MedicalRecordDto
-                {
-                    Id = medicalRecord.Id,
-                    AppointmentId = medicalRecord.AppointmentId,
-                    PatientId = medicalRecord.PatientId,
-                    DoctorId = medicalRecord.DoctorId,
-                    Diagnosis = medicalRecord.Diagnosis,
-                    Symptoms = medicalRecord.Symptoms,
-                    Treatment = medicalRecord.Treatment,
-                    Prescription = medicalRecord.Prescription,
-                    Notes = medicalRecord.Notes,
-                    ConsultationFee = medicalRecord.ConsultationFee,
-                    MedicineFee = medicalRecord.MedicineFee,
-                    TestFee = medicalRecord.TestFee,
-                    OtherFee = medicalRecord.OtherFee,
-                    PaidAmount = paidAmount,
-                    PaymentStatus = medicalRecord.PaymentStatus,
-                    CreatedAt = medicalRecord.CreatedAt,
-                    UpdatedAt = medicalRecord.UpdatedAt,
-                    Patient = medicalRecord.Patient != null ? new PatientDto
-                    {
-                        Id = medicalRecord.Patient.Id,
-                        Name = medicalRecord.Patient.Name,
-                        Age = medicalRecord.Patient.Age,
-                        Email = medicalRecord.Patient.Email,
-                        Status = medicalRecord.Patient.Status.ToString()
-                    } : null,
-                    Doctor = medicalRecord.Doctor != null ? new DoctorDto
-                    {
-                        Id = medicalRecord.Doctor.Id,
-                        Name = medicalRecord.Doctor.Name,
-                        Specialty = medicalRecord.Doctor.Specialty,
-                        Email = medicalRecord.Doctor.Email
-                    } : null,
-                    Appointment = medicalRecord.Appointment != null ? new SimpleAppointmentDto
-                    {
-                        Id = medicalRecord.Appointment.Id,
-                        Date = medicalRecord.Appointment.Date,
-                        Status = medicalRecord.Appointment.Status
-                    } : null
-                };
-
-                return Ok(response);
+                return Ok(medicalRecordDto);
             }
             catch (Exception ex)
             {
@@ -394,65 +158,23 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // PUT: api/MedicalRecords/{id}
         [HttpPut("{id}")]
         [Authorize(Roles = "Doctor")]
         public async Task<IActionResult> UpdateMedicalRecord(int id, [FromBody] UpdateMedicalRecordRequest request)
         {
             try
             {
-                var medicalRecord = await _medicalRecordRepository.GetByIdAsync(id);
+                var (message, medicalRecord) = await _medicalRecordApplicationService.UpdateMedicalRecordAsync(id, request);
 
                 if (medicalRecord == null)
                 {
-                    return NotFound(new { message = "Medical record not found" });
+                    return NotFound(new { message });
                 }
 
-                // Update fields
-                if (request.Diagnosis != null) medicalRecord.Diagnosis = request.Diagnosis;
-                if (request.Symptoms != null) medicalRecord.Symptoms = request.Symptoms;
-                if (request.Treatment != null) medicalRecord.Treatment = request.Treatment;
-                if (request.Prescription != null) medicalRecord.Prescription = request.Prescription;
-                if (request.Notes != null) medicalRecord.Notes = request.Notes;
-                if (request.MedicineFee.HasValue) medicalRecord.MedicineFee = request.MedicineFee.Value;
-                if (request.TestFee.HasValue) medicalRecord.TestFee = request.TestFee.Value;
-                if (request.OtherFee.HasValue) medicalRecord.OtherFee = request.OtherFee.Value;
-
-                // Calculate paid amount
-                var paidAmount = medicalRecord.Payments
-                    .Where(p => p.Status == "Completed" && 
-                               (p.PaymentType == "Deposit" || p.PaymentType == "FinalPayment"))
-                    .Sum(p => p.Amount);
-
-                medicalRecord.PaidAmount = paidAmount;
-
-                await _medicalRecordRepository.UpdateAsync(medicalRecord);
-
-                // Return DTO to avoid circular reference
-                var response = new MedicalRecordDto
+                return Ok(new
                 {
-                    Id = medicalRecord.Id,
-                    AppointmentId = medicalRecord.AppointmentId,
-                    PatientId = medicalRecord.PatientId,
-                    DoctorId = medicalRecord.DoctorId,
-                    Diagnosis = medicalRecord.Diagnosis,
-                    Symptoms = medicalRecord.Symptoms,
-                    Treatment = medicalRecord.Treatment,
-                    Prescription = medicalRecord.Prescription,
-                    Notes = medicalRecord.Notes,
-                    ConsultationFee = medicalRecord.ConsultationFee,
-                    MedicineFee = medicalRecord.MedicineFee,
-                    TestFee = medicalRecord.TestFee,
-                    OtherFee = medicalRecord.OtherFee,
-                    PaidAmount = paidAmount,
-                    PaymentStatus = medicalRecord.PaymentStatus,
-                    CreatedAt = medicalRecord.CreatedAt,
-                    UpdatedAt = medicalRecord.UpdatedAt
-                };
-
-                return Ok(new { 
-                    message = "Cập nhật thành công",
-                    medicalRecord = response
+                    message,
+                    medicalRecord
                 });
             }
             catch (Exception ex)
@@ -469,51 +191,14 @@ namespace HospitalManagementSystem.API.Controllers
         {
             try
             {
-                var medicalRecord = await _medicalRecordRepository.GetByIdAsync(id);
+                var (message, success) = await _medicalRecordApplicationService.CompleteMedicalRecordAsync(id);
 
-                if (medicalRecord == null)
+                if (!success)
                 {
-                    return NotFound(new { message = "Medical record not found" });
+                    return NotFound(new { message });
                 }
 
-                // Update payment status based on paid amount
-                var totalFee = medicalRecord.ConsultationFee + medicalRecord.MedicineFee + 
-                              medicalRecord.TestFee + medicalRecord.OtherFee;
-                
-                var paidAmount = medicalRecord.Payments
-                    .Where(p => p.Status == "Completed")
-                    .Sum(p => p.Amount);
-
-                medicalRecord.PaidAmount = paidAmount;
-
-                if (paidAmount >= totalFee)
-                {
-                    medicalRecord.PaymentStatus = "FullyPaid";
-                }
-                else if (paidAmount > 0)
-                {
-                    medicalRecord.PaymentStatus = "PartiallyPaid";
-                }
-                else
-                {
-                    medicalRecord.PaymentStatus = "Unpaid";
-                }
-
-                // Update appointment status
-                if (medicalRecord.Appointment != null)
-                {
-                    medicalRecord.Appointment.Status = "Completed";
-                    medicalRecord.Appointment.UpdatedAt = DateTime.UtcNow;
-                    await _appointmentRepository.UpdateAsync(medicalRecord.Appointment);
-                }
-
-                await _medicalRecordRepository.UpdateAsync(medicalRecord);
-
-                // Return simple response without circular reference
-                return Ok(new { 
-                    message = "Hoàn thành khám bệnh",
-                    success = true
-                });
+                return Ok(new { message, success });
             }
             catch (Exception ex)
             {
@@ -522,34 +207,20 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // POST: api/MedicalRecords/{id}/hospitalize
         [HttpPost("{id}/hospitalize")]
         [Authorize(Roles = "Doctor")]
         public async Task<IActionResult> HospitalizeMedicalRecord(int id)
         {
             try
             {
-                var medicalRecord = await _medicalRecordRepository.GetByIdAsync(id);
+                var (message, medicalRecord) = await _medicalRecordApplicationService.HospitalizeMedicalRecordAsync(id);
 
                 if (medicalRecord == null)
                 {
-                    return NotFound(new { message = "Medical record not found" });
+                    return NotFound(new { message });
                 }
 
-                // Update appointment status to Hospitalized
-                if (medicalRecord.Appointment != null)
-                {
-                    medicalRecord.Appointment.Status = "Hospitalized";
-                    medicalRecord.Appointment.UpdatedAt = DateTime.UtcNow;
-                    await _appointmentRepository.UpdateAsync(medicalRecord.Appointment);
-                }
-
-                await _medicalRecordRepository.UpdateAsync(medicalRecord);
-
-                return Ok(new { 
-                    message = "Đã chuyển nhập viện",
-                    medicalRecord = medicalRecord
-                });
+                return Ok(new { message, medicalRecord });
             }
             catch (Exception ex)
             {
@@ -558,7 +229,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // GET: api/MedicalRecords/reference-data/diagnoses
         [HttpGet("reference-data/diagnoses")]
         public async Task<IActionResult> GetDiagnoses()
         {
@@ -643,7 +313,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // GET: api/MedicalRecords/reference-data/symptoms
         [HttpGet("reference-data/symptoms")]
         public async Task<IActionResult> GetSymptoms()
         {
@@ -712,7 +381,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // GET: api/MedicalRecords/reference-data/drugs
         [HttpGet("reference-data/drugs")]
         public async Task<IActionResult> GetDrugs()
         {
@@ -781,7 +449,6 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // GET: api/MedicalRecords/reference-data/medical-tests
         [HttpGet("reference-data/medical-tests")]
         public async Task<IActionResult> GetMedicalTests()
         {
@@ -840,6 +507,103 @@ namespace HospitalManagementSystem.API.Controllers
                 return StatusCode(500, new { message = "Lỗi khi tải xét nghiệm", error = ex.Message });
             }
         }
+
+        [HttpGet("{id}/prescription-items")]
+        [Authorize(Roles = "Doctor,Admin")]
+        public async Task<IActionResult> GetPrescriptionItems(int id)
+        {
+            try
+            {
+                var items = await _prescriptionItemRepository.GetByMedicalRecordIdAsync(id);
+                return Ok(items);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching prescription items");
+                return StatusCode(500, new { message = "Lỗi khi tải danh sách" });
+            }
+        }
+
+        [HttpPost("prescription-items/{id}/request-cancel")]
+        [Authorize(Roles = "Doctor")]
+        public async Task<IActionResult> RequestCancelPrescriptionItem(int id, [FromBody] CancelItemRequest request)
+        {
+            try
+            {
+                var doctorIdClaim = User.Claims.FirstOrDefault(c => c.Type == "DoctorId")?.Value;
+                if (string.IsNullOrEmpty(doctorIdClaim) || !int.TryParse(doctorIdClaim, out int doctorId))
+                {
+                    return BadRequest(new { message = "Doctor ID not found in token" });
+                }
+
+                var item = await _prescriptionItemRepository.GetByIdAsync(id);
+                if (item == null) return NotFound(new { message = "Item not found" });
+
+                if (item.Status == "Pending")
+                {
+                    // Delete if still Pending
+                    await _prescriptionItemRepository.DeleteAsync(item);
+                }
+                else
+                {
+                    // Request cancel if already Confirmed
+                    item.IsCancelRequested = true;
+                    item.CancelReason = request.Reason;
+                    item.Status = "CancelRequested";
+                    item.CancelRequestedAt = DateTime.UtcNow;
+                    item.CancelRequestedByDoctorId = doctorId;
+                    item.UpdatedAt = DateTime.UtcNow;
+                    await _prescriptionItemRepository.UpdateAsync(item);
+                }
+
+                await _prescriptionItemRepository.SaveChangesAsync();
+                return Ok(new { message = "Đã yêu cầu hủy" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error requesting cancel prescription item");
+                return StatusCode(500, new { message = "Lỗi khi yêu cầu hủy" });
+            }
+        }
+
+        [HttpPost("prescription-items/{id}/approve-cancel")]
+        [Authorize(Roles = "Admin,Nurse")]
+        public async Task<IActionResult> ApproveCancelPrescriptionItem(int id)
+        {
+            try
+            {
+                var item = await _prescriptionItemRepository.GetByIdAsync(id);
+                if (item == null) return NotFound(new { message = "Item not found" });
+
+                item.Status = "Cancelled";
+                item.UpdatedAt = DateTime.UtcNow;
+
+                await _prescriptionItemRepository.UpdateAsync(item);
+                await _prescriptionItemRepository.SaveChangesAsync();
+                return Ok(new { message = "Đã duyệt hủy" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error approving cancel prescription item");
+                return StatusCode(500, new { message = "Lỗi khi duyệt hủy" });
+            }
+        }
+
+        [HttpGet("{id}/history")]
+        [Authorize(Roles = "Doctor,Admin")]
+        public async Task<IActionResult> GetMedicalRecordHistory(int id)
+        {
+            try
+            {
+                var history = await _medicalRecordHistoryRepository.GetByMedicalRecordIdAsync(id);
+                return Ok(history);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching medical record history");
+                return StatusCode(500, new { message = "Lỗi khi tải lịch sử" });
+            }
+        }
     }
 
     // Request DTOs
@@ -848,16 +612,9 @@ namespace HospitalManagementSystem.API.Controllers
         public int AppointmentId { get; set; }
     }
 
-    public class UpdateMedicalRecordRequest
+    public class CancelItemRequest
     {
-        public string? Diagnosis { get; set; }
-        public string? Symptoms { get; set; }
-        public string? Treatment { get; set; }
-        public string? Prescription { get; set; }
-        public string? Notes { get; set; }
-        public decimal? MedicineFee { get; set; }
-        public decimal? TestFee { get; set; }
-        public decimal? OtherFee { get; set; }
+        public string Reason { get; set; } = string.Empty;
     }
 
     // Reference data models
@@ -893,55 +650,6 @@ namespace HospitalManagementSystem.API.Controllers
     {
         public string category { get; set; } = string.Empty;
         public List<MedicalTestItem> tests { get; set; } = new();
-    }
-
-    // Response DTOs to avoid circular reference
-    public class MedicalRecordDto
-    {
-        public int Id { get; set; }
-        public int AppointmentId { get; set; }
-        public int PatientId { get; set; }
-        public int DoctorId { get; set; }
-        public string Diagnosis { get; set; } = string.Empty;
-        public string Symptoms { get; set; } = string.Empty;
-        public string Treatment { get; set; } = string.Empty;
-        public string Prescription { get; set; } = string.Empty;
-        public string Notes { get; set; } = string.Empty;
-        public decimal ConsultationFee { get; set; }
-        public decimal MedicineFee { get; set; }
-        public decimal TestFee { get; set; }
-        public decimal OtherFee { get; set; }
-        public decimal PaidAmount { get; set; }
-        public string PaymentStatus { get; set; } = string.Empty;
-        public DateTime CreatedAt { get; set; }
-        public DateTime? UpdatedAt { get; set; }
-        public PatientDto? Patient { get; set; }
-        public DoctorDto? Doctor { get; set; }
-        public SimpleAppointmentDto? Appointment { get; set; }
-    }
-
-    public class PatientDto
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = string.Empty;
-        public int Age { get; set; }
-        public string Email { get; set; } = string.Empty;
-        public string Status { get; set; } = string.Empty;
-    }
-
-    public class DoctorDto
-    {
-        public int Id { get; set; }
-        public string Name { get; set; } = string.Empty;
-        public string Specialty { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-    }
-
-    public class SimpleAppointmentDto
-    {
-        public int Id { get; set; }
-        public DateTime Date { get; set; }
-        public string Status { get; set; } = string.Empty;
     }
 }
 

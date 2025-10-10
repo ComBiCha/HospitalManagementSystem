@@ -34,8 +34,8 @@ public class DoctorAttendanceRepository : IDoctorAttendanceRepository
     {
         return await _context.DoctorAttendances
             .Include(a => a.Shift)
-            .Where(a => a.DoctorId == doctorId && 
-                       a.ShiftDate >= startDate.Date && 
+            .Where(a => a.DoctorId == doctorId &&
+                       a.ShiftDate >= startDate.Date &&
                        a.ShiftDate <= endDate.Date)
             .OrderByDescending(a => a.ShiftDate)
             .ToListAsync();
@@ -71,13 +71,13 @@ public class DoctorAttendanceRepository : IDoctorAttendanceRepository
         // Check if shift is for today
         var today = checkInTime.Date;
         var dayOfWeek = (int)checkInTime.DayOfWeek;
-        
+
         if ((int)shift.DayOfWeek != dayOfWeek) return false;
 
         // Check if check-in time is within 10 minutes before shift start
         var shiftStartDateTime = today.Add(shift.StartTime);
         var earliestCheckIn = shiftStartDateTime.AddMinutes(-10);
-        
+
         return checkInTime >= earliestCheckIn && checkInTime <= shiftStartDateTime.AddHours(1);
     }
 
@@ -85,8 +85,16 @@ public class DoctorAttendanceRepository : IDoctorAttendanceRepository
     {
         return await _context.DoctorAttendances
             .Include(a => a.Shift)
-            .FirstOrDefaultAsync(a => a.DoctorId == doctorId && 
-                                     a.Status == "CheckedIn" && 
+            .FirstOrDefaultAsync(a => a.DoctorId == doctorId &&
+                                     a.Status == "CheckedIn" &&
                                      a.CheckOutTime == null);
+    }
+    public async Task<DoctorAttendance?> GetActiveAttendanceAsync2(int doctorId, DateTime shiftDateUtc)
+    {
+        return await _context.DoctorAttendances
+            .FirstOrDefaultAsync(a => a.DoctorId == doctorId &&
+                                    a.ShiftDate == shiftDateUtc &&
+                                    a.CheckInTime != null &&
+                                    a.CheckOutTime == null);
     }
 }

@@ -27,7 +27,9 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<PatientIdentifiers> PatientIdentifiers { get; set; }
         public DbSet<DoctorShift> DoctorShifts { get; set; } 
-        public DbSet<DoctorAttendance> DoctorAttendances { get; set; } // Added DbSet for DoctorAttendance
+        public DbSet<DoctorAttendance> DoctorAttendances { get; set; }
+        public DbSet<PrescriptionItem> PrescriptionItems { get; set; }
+        public DbSet<MedicalRecordHistory> MedicalRecordHistories { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -258,6 +260,55 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 entity.HasIndex(e => e.PatientId);
                 entity.HasIndex(e => e.DoctorId);
                 entity.HasIndex(e => e.PaymentStatus);
+            });
+
+            // PrescriptionItem entity configuration
+            modelBuilder.Entity<PrescriptionItem>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.MedicalRecordId).IsRequired();
+                entity.Property(e => e.ItemType).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.ItemCode).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.ItemName).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.Price).HasPrecision(18, 2).HasDefaultValue(0);
+                entity.Property(e => e.Status).IsRequired().HasMaxLength(50).HasDefaultValue("Pending");
+                entity.Property(e => e.CreatedAt).IsRequired();
+                
+                entity.HasOne(e => e.MedicalRecord)
+                    .WithMany()
+                    .HasForeignKey(e => e.MedicalRecordId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                
+                entity.HasIndex(e => e.MedicalRecordId);
+                entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => new { e.MedicalRecordId, e.ItemCode });
+            });
+
+            // MedicalRecordHistory entity configuration
+            modelBuilder.Entity<MedicalRecordHistory>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.MedicalRecordId).IsRequired();
+                entity.Property(e => e.DoctorId).IsRequired();
+                entity.Property(e => e.Diagnosis).IsRequired().HasColumnType("text");
+                entity.Property(e => e.Symptoms).HasColumnType("text");
+                entity.Property(e => e.Treatment).HasColumnType("text");
+                entity.Property(e => e.Prescription).HasColumnType("text");
+                entity.Property(e => e.Notes).HasColumnType("text");
+                entity.Property(e => e.MedicineFee).HasPrecision(18, 2).HasDefaultValue(0);
+                entity.Property(e => e.TestFee).HasPrecision(18, 2).HasDefaultValue(0);
+                entity.Property(e => e.OtherFee).HasPrecision(18, 2).HasDefaultValue(0);
+                entity.Property(e => e.Action).IsRequired().HasMaxLength(50).HasDefaultValue("Update");
+                entity.Property(e => e.CreatedAt).IsRequired();
+                
+                entity.HasOne(e => e.MedicalRecord)
+                    .WithMany()
+                    .HasForeignKey(e => e.MedicalRecordId)
+                    .OnDelete(DeleteBehavior.Cascade);
+                
+                entity.HasIndex(e => e.MedicalRecordId);
+                entity.HasIndex(e => e.CreatedAt);
+                entity.HasIndex(e => new { e.MedicalRecordId, e.CreatedAt });
             });
 
             // Seed default users

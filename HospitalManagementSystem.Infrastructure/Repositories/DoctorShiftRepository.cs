@@ -3,6 +3,7 @@ using HospitalManagementSystem.Domain.Entities;
 using HospitalManagementSystem.Domain.Repositories;
 using HospitalManagementSystem.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace HospitalManagementSystem.Infrastructure.Repositories
 {
@@ -119,68 +120,19 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                     && s.IsActive);
         }
 
-        public async Task<IEnumerable<Doctor>> GetAvailableDoctorsAsync(DateTime appointmentDate, string specialty) //stored procedure
+        public async Task<IEnumerable<Doctor>> GetAvailableDoctorsAsync(DateTime appointmentDate, string specialty)
         {
-            var requestedDate = appointmentDate.Kind == DateTimeKind.Utc 
-                ? appointmentDate 
-                : DateTime.SpecifyKind(appointmentDate, DateTimeKind.Utc);
+            var dateParam = new NpgsqlParameter("p_appointment_time", appointmentDate.ToUniversalTime());
+            var specialtyParam = new NpgsqlParameter("p_specialty", specialty);
 
-            var dayOfWeek = requestedDate.DayOfWeek;
-            var time = requestedDate.TimeOfDay;
-
-            _logger.LogInformation("Searching doctors: DayOfWeek={DayOfWeek}, Time={Time}, Specialty={Specialty}, Requested={Requested}", 
-                dayOfWeek, time, specialty, requestedDate);
-
-            // Get doctors with matching specialty and working on that day/time
-            var workingDoctors = await _context.DoctorShifts
-                .Include(s => s.Doctor)
-                .Where(s => s.DayOfWeek == dayOfWeek 
-                    && s.StartTime <= time 
-                    && s.EndTime >= time 
-                    && s.IsActive
-                    && s.Doctor.Specialty == specialty
-                    && (s.Doctor.Status & DoctorStatus.Active) == DoctorStatus.Active)
-                .Select(s => s.Doctor)
-                .Distinct()
+            var doctors = await _context.Doctors
+                .FromSqlRaw("SELECT * FROM get_available_doctors(@p_appointment_time, @p_specialty)", 
+                            dateParam, specialtyParam)
                 .ToListAsync();
 
-            _logger.LogInformation("Found {Count} working doctors", workingDoctors.Count);
-
-            // Filter out doctors who already have appointments at that time
-            var availableDoctors = new List<Doctor>();
-            foreach (var doctor in workingDoctors)
-            {
-                var doctorAppointments = await _context.Appointments
-                    .Where(a => a.DoctorId == doctor.Id && a.Status != "Cancelled" && a.Status != "ExpiredPayment")
-                    .ToListAsync();
-
-                var hasConflict = doctorAppointments.Any(a => 
-                {
-                    var existingTimeLocal = a.Date.AddHours(7).TimeOfDay;
-                    var requestedTime = requestedDate.TimeOfDay;
-                    
-                    var timeDiffMinutes = Math.Abs((existingTimeLocal - requestedTime).TotalMinutes);
-                    
-                    _logger.LogInformation(
-                        "Doctor {DoctorId}: Existing={Existing} (DB: {DbTime}), Requested={Requested}, Diff={Diff} mins", 
-                        doctor.Id, existingTimeLocal, a.Date, requestedTime, timeDiffMinutes);
-
-                    return timeDiffMinutes < 30;
-                });
-
-                if (!hasConflict)
-                {
-                    availableDoctors.Add(doctor);
-                    _logger.LogInformation("Doctor {DoctorId} ({DoctorName}) is available", doctor.Id, doctor.Name);
-                }
-                else
-                {
-                    _logger.LogInformation("Doctor {DoctorId} ({DoctorName}) has conflict", doctor.Id, doctor.Name);
-                }
-            }
-
-            return availableDoctors;
+            return doctors;
         }
+
 
         public async Task<List<DoctorShift>> GetDoctorShiftsAsync(int doctorId)
         {

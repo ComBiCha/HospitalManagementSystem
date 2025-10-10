@@ -21,12 +21,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
         {
             try
             {
-                _logger.LogInformation("Creating appointment: PatientId={PatientId}, DoctorId={DoctorId}, Date={Date}", 
+                _logger.LogInformation("Creating appointment: PatientId={PatientId}, DoctorId={DoctorId}, Date={Date}",
                     appointment.PatientId, appointment.DoctorId, appointment.Date);
 
                 // Ensure DateTime is in UTC for PostgreSQL
-                appointment.Date = appointment.Date.Kind == DateTimeKind.Utc 
-                    ? appointment.Date 
+                appointment.Date = appointment.Date.Kind == DateTimeKind.Utc
+                    ? appointment.Date
                     : DateTime.SpecifyKind(appointment.Date, DateTimeKind.Utc);
 
                 appointment.CreatedAt = DateTime.UtcNow;
@@ -50,9 +50,9 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             try
             {
                 _logger.LogInformation("Getting appointment with ID: {AppointmentId}", id);
-                
+
                 var appointment = await _context.Appointments.FindAsync(id);
-                
+
                 if (appointment == null)
                 {
                     _logger.LogWarning("Appointment with ID {AppointmentId} not found", id);
@@ -72,11 +72,11 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             try
             {
                 _logger.LogInformation("Getting all appointments");
-                
+
                 var appointments = await _context.Appointments
                     .OrderBy(a => a.Date)
                     .ToListAsync();
-                
+
                 _logger.LogInformation("Retrieved {Count} appointments", appointments.Count);
                 return appointments;
             }
@@ -102,12 +102,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
 
                 existingAppointment.PatientId = appointment.PatientId;
                 existingAppointment.DoctorId = appointment.DoctorId;
-                
+
                 // Ensure DateTime is in UTC for PostgreSQL
-                existingAppointment.Date = appointment.Date.Kind == DateTimeKind.Utc 
-                    ? appointment.Date 
+                existingAppointment.Date = appointment.Date.Kind == DateTimeKind.Utc
+                    ? appointment.Date
                     : DateTime.SpecifyKind(appointment.Date, DateTimeKind.Utc);
-                    
+
                 existingAppointment.Status = appointment.Status;
                 existingAppointment.UpdatedAt = DateTime.UtcNow;
 
@@ -167,12 +167,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             try
             {
                 _logger.LogInformation("Getting appointments for patient: {PatientId}", patientId);
-                
+
                 var appointments = await _context.Appointments
                     .Where(a => a.PatientId == patientId)
                     .OrderBy(a => a.Date)
                     .ToListAsync();
-                
+
                 _logger.LogInformation("Found {Count} appointments for patient {PatientId}", appointments.Count, patientId);
                 return appointments;
             }
@@ -188,12 +188,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             try
             {
                 _logger.LogInformation("Getting appointments for doctor: {DoctorId}", doctorId);
-                
+
                 var appointments = await _context.Appointments
                     .Where(a => a.DoctorId == doctorId)
                     .OrderBy(a => a.Date)
                     .ToListAsync();
-                
+
                 _logger.LogInformation("Found {Count} appointments for doctor {DoctorId}", appointments.Count, doctorId);
                 return appointments;
             }
@@ -209,12 +209,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             try
             {
                 _logger.LogInformation("Getting appointments between {StartDate} and {EndDate}", startDate, endDate);
-                
+
                 var appointments = await _context.Appointments
                     .Where(a => a.Date >= startDate && a.Date <= endDate)
                     .OrderBy(a => a.Date)
                     .ToListAsync();
-                
+
                 _logger.LogInformation("Found {Count} appointments in date range", appointments.Count);
                 return appointments;
             }
@@ -230,8 +230,8 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             try
             {
                 // Ensure DateTime is in UTC for PostgreSQL
-                var utcAppointmentDate = appointmentDate.Kind == DateTimeKind.Utc 
-                    ? appointmentDate 
+                var utcAppointmentDate = appointmentDate.Kind == DateTimeKind.Utc
+                    ? appointmentDate
                     : DateTime.SpecifyKind(appointmentDate, DateTimeKind.Utc);
 
                 // Check for appointments within 1 hour window
@@ -239,8 +239,8 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 var endTime = utcAppointmentDate.AddMinutes(30);
 
                 var query = _context.Appointments
-                    .Where(a => a.DoctorId == doctorId && 
-                               a.Date >= startTime && 
+                    .Where(a => a.DoctorId == doctorId &&
+                               a.Date >= startTime &&
                                a.Date <= endTime &&
                                a.Status != "Cancelled" &&
                                a.Status != "ExpiredPayment");
@@ -251,10 +251,10 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 }
 
                 var hasConflict = await query.AnyAsync();
-                
-                _logger.LogInformation("Conflict check for doctor {DoctorId} at {Date}: {HasConflict}", 
+
+                _logger.LogInformation("Conflict check for doctor {DoctorId} at {Date}: {HasConflict}",
                     doctorId, utcAppointmentDate, hasConflict);
-                
+
                 return hasConflict;
             }
             catch (Exception ex)
@@ -269,11 +269,19 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             return await _context.Appointments
                 .Include(a => a.Patient)
                 .Include(a => a.Doctor)
-                .Where(a => a.DoctorId == doctorId && 
-                           a.Date >= startDate && 
+                .Where(a => a.DoctorId == doctorId &&
+                           a.Date >= startDate &&
                            a.Date < endDate)
                 .OrderBy(a => a.Date)
                 .ToListAsync();
+        }
+        public async Task<Appointment?> GetByIdWithDetailsAsync(int appointmentId)
+        {
+            return await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Include(a => a.MedicalRecord)
+                .FirstOrDefaultAsync(a => a.Id == appointmentId);
         }
     }
 }

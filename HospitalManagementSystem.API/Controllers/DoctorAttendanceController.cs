@@ -30,7 +30,6 @@ public class DoctorAttendanceController : ControllerBase
         _logger = logger;
     }
 
-    // GET: api/DoctorAttendance/check-in-status
     [HttpGet("check-in-status")]
     public async Task<IActionResult> GetCheckInStatus()
     {
@@ -224,7 +223,6 @@ public class DoctorAttendanceController : ControllerBase
         }
     }
 
-    // POST: api/DoctorAttendance/check-in
     [HttpPost("check-in")]
     public async Task<IActionResult> CheckIn([FromBody] CheckInRequest request)
     {
@@ -419,7 +417,7 @@ public class DoctorAttendanceController : ControllerBase
         }
     }
 
-    // POST: api/DoctorAttendance/check-out
+
     [HttpPost("check-out")]
     public async Task<IActionResult> CheckOut([FromBody] CheckOutRequest request)
     {
@@ -548,7 +546,6 @@ public class DoctorAttendanceController : ControllerBase
         }
     }
 
-    // GET: api/DoctorAttendance/my-attendances
     [HttpGet("my-attendances")]
     public async Task<IActionResult> GetMyAttendances([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
     {
@@ -574,7 +571,6 @@ public class DoctorAttendanceController : ControllerBase
         }
     }
 
-    // GET: api/DoctorAttendance/today
     [HttpGet("today")]
     public async Task<IActionResult> GetTodayAttendance()
     {

@@ -93,6 +93,10 @@ builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<DoctorAttendanceNotificationService>();
 
 builder.Services.AddScoped<IMedicalRecordRepository, MedicalRecordRepository>();
+builder.Services.AddScoped<IPrescriptionItemRepository, PrescriptionItemRepository>();
+builder.Services.AddScoped<IMedicalRecordHistoryRepository, MedicalRecordHistoryRepository>();
+builder.Services.AddScoped<MedicalRecordApplicationService>();
+builder.Services.AddScoped<AppointmentExaminationService>();
 
 // Redis ConnectionMultiplexer
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis");

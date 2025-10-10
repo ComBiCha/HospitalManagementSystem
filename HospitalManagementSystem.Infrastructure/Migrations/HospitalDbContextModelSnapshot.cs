@@ -377,6 +377,79 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                     b.ToTable("MedicalRecords");
                 });
 
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.MedicalRecordHistory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Update");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Diagnosis")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("DoctorId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MedicalRecordId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("MedicineFee")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m);
+
+                    b.Property<string>("Notes")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("OtherFee")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m);
+
+                    b.Property<string>("Prescription")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Symptoms")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("TestFee")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m);
+
+                    b.Property<string>("Treatment")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("MedicalRecordId");
+
+                    b.HasIndex("MedicalRecordId", "CreatedAt");
+
+                    b.ToTable("MedicalRecordHistories");
+                });
+
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.Notification", b =>
                 {
                     b.Property<int>("Id")
@@ -641,6 +714,80 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                     b.ToTable("Payments");
                 });
 
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.PrescriptionItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CancelReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CancelRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CancelRequestedByDoctorId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsCancelRequested")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ItemCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ItemName")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("ItemType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("MedicalRecordId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Price")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m);
+
+                    b.Property<int?>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("Pending");
+
+                    b.Property<string>("Unit")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MedicalRecordId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("MedicalRecordId", "ItemCode");
+
+                    b.ToTable("PrescriptionItems");
+                });
+
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.RefreshToken", b =>
                 {
                     b.Property<int>("Id")
@@ -876,6 +1023,17 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.MedicalRecordHistory", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.MedicalRecord", "MedicalRecord")
+                        .WithMany()
+                        .HasForeignKey("MedicalRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MedicalRecord");
+                });
+
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.Notification", b =>
                 {
                     b.HasOne("HospitalManagementSystem.Domain.Entities.User", "User")
@@ -914,6 +1072,17 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                     b.Navigation("MedicalRecord");
 
                     b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.PrescriptionItem", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.MedicalRecord", "MedicalRecord")
+                        .WithMany()
+                        .HasForeignKey("MedicalRecordId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MedicalRecord");
                 });
 
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.RefreshToken", b =>

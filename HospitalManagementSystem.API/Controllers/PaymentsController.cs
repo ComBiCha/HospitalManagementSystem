@@ -343,8 +343,8 @@ namespace HospitalManagementSystem.API.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing Stripe webhook");
-                return BadRequest();
+                _logger.LogError(ex, "Error processing Stripe webhook: {Message}", ex.Message);
+                return BadRequest(ex.Message);
             }
         }
 

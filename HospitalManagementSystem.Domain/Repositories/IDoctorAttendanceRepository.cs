@@ -12,4 +12,5 @@ public interface IDoctorAttendanceRepository
     Task<DoctorAttendance> UpdateAsync(DoctorAttendance attendance);
     Task<bool> CanCheckInAsync(int doctorId, int shiftId, DateTime checkInTime);
     Task<DoctorAttendance?> GetActiveAttendanceAsync(int doctorId);
+    Task<DoctorAttendance?> GetActiveAttendanceAsync2(int doctorId, DateTime shiftDateUtc);
 }

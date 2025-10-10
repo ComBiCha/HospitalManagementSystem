@@ -56,6 +56,25 @@ interface ReferenceItem {
 interface PrescriptionItem extends ReferenceItem {
   type: 'drug' | 'test';
   quantity?: number;
+  id?: number; // ID from database if already saved
+  status?: string; // Pending, Confirmed, CancelRequested, Cancelled
+  cancelReason?: string;
+}
+
+interface MedicalRecordHistoryItem {
+  id: number;
+  medicalRecordId: number;
+  doctorId: number;
+  diagnosis: string;
+  symptoms: string;
+  treatment: string;
+  prescription: string;
+  notes: string;
+  medicineFee: number;
+  testFee: number;
+  otherFee: number;
+  action: string;
+  createdAt: string;
 }
 
 export default function ExaminationPage({ params }: { params: { id: string } }) {
@@ -84,6 +103,14 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
   const [symptomSearch, setSymptomSearch] = useState('');
   const [drugSearch, setDrugSearch] = useState('');
   const [testSearch, setTestSearch] = useState('');
+
+  // New states for history and prescription items
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyItems, setHistoryItems] = useState<MedicalRecordHistoryItem[]>([]);
+  const [prescriptionItems, setPrescriptionItems] = useState<PrescriptionItem[]>([]);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelItemId, setCancelItemId] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -115,6 +142,40 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
       setNotes(record.notes || '');
       setOtherFee(record.otherFee || 0);
 
+      // Fetch prescription items from database
+      try {
+        const itemsResponse = await api.get(`/MedicalRecords/${params.id}/prescription-items`);
+        const dbItems = itemsResponse.data;
+        setPrescriptionItems(dbItems);
+        
+        console.log('DB Items:', dbItems);
+        
+        // ALWAYS use database items as source of truth if they exist
+        const mergedPrescriptions: PrescriptionItem[] = dbItems.map((dbItem: any) => ({
+          id: dbItem.id,
+          type: dbItem.itemType === 'Medicine' ? 'drug' : 'test',
+          code: dbItem.itemCode,
+          name: dbItem.itemName,
+          quantity: dbItem.quantity,
+          unit: dbItem.unit,
+          fee: dbItem.price,
+          status: dbItem.status,
+          cancelReason: dbItem.cancelReason,
+        }));
+        
+        setSelectedPrescriptions(mergedPrescriptions);
+        console.log('Merged prescription items:', mergedPrescriptions);
+      } catch (error) {
+        console.error('Error fetching prescription items:', error);
+        // Fallback to JSON only if DB fetch completely fails
+        try {
+          const jsonItems = JSON.parse(record.prescription || '[]');
+          setSelectedPrescriptions(jsonItems);
+        } catch {
+          setSelectedPrescriptions([]);
+        }
+      }
+
       // Fetch reference data
       const [diagnosesRes, symptomsRes, drugsRes, testsRes] = await Promise.all([
         api.get('/MedicalRecords/reference-data/diagnoses'),
@@ -140,9 +201,9 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
     let testFee = 0;
 
     selectedPrescriptions.forEach((item) => {
-      if (item.type === 'drug') {
+      if (item.type === 'drug' && item.status !== 'Cancelled') {
         medicineFee += (item.fee || 0) * (item.quantity || 1);
-      } else if (item.type === 'test') {
+      } else if (item.type === 'test' && item.status !== 'Cancelled') {
         testFee += item.fee || 0;
       }
     });
@@ -213,6 +274,58 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
       setIsReadOnly(false);
     }
   }, [medicalRecord]);
+
+  const fetchHistory = async () => {
+    try {
+      const response = await api.get(`/MedicalRecords/${params.id}/history`);
+      setHistoryItems(response.data);
+      setShowHistoryModal(true);
+    } catch (error: any) {
+      console.error('Error fetching history:', error);
+      toast.error('Không thể tải lịch sử!');
+    }
+  };
+
+  const handleCancelPrescriptionItem = async (itemId: number, status: string) => {
+    if (status === 'Pending') {
+      // Direct delete if Pending
+      if (!confirm('Xác nhận xóa mục này?')) return;
+      
+      try {
+        await api.post(`/MedicalRecords/prescription-items/${itemId}/request-cancel`, { reason: 'Deleted by doctor' });
+        toast.success('Đã xóa!');
+        await fetchData(); // Refresh
+      } catch (error: any) {
+        console.error('Error deleting item:', error);
+        toast.error('Lỗi khi xóa!');
+      }
+    } else {
+      // Request cancel if already Confirmed
+      setCancelItemId(itemId);
+      setShowCancelModal(true);
+    }
+  };
+
+  const submitCancelRequest = async () => {
+    if (!cancelItemId || !cancelReason.trim()) {
+      toast.error('Vui lòng nhập lý do hủy!');
+      return;
+    }
+
+    try {
+      await api.post(`/MedicalRecords/prescription-items/${cancelItemId}/request-cancel`, {
+        reason: cancelReason
+      });
+      toast.success('Đã gửi yêu cầu hủy!');
+      setShowCancelModal(false);
+      setCancelItemId(null);
+      setCancelReason('');
+      await fetchData(); // Refresh
+    } catch (error: any) {
+      console.error('Error requesting cancel:', error);
+      toast.error('Lỗi khi gửi yêu cầu!');
+    }
+  };
 
   if (isLoading || !medicalRecord) {
     return (
@@ -461,8 +574,26 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                         <button
                           key={index}
                           onClick={() => {
-                            if (!selectedPrescriptions.find((p) => p.name === drug.name && p.type === 'drug')) {
-                              setSelectedPrescriptions([...selectedPrescriptions, { ...drug, type: 'drug', quantity: 1 }]);
+                            const existing = selectedPrescriptions.find(
+                              (p) => p.name === drug.name && p.type === "drug" && p.status?.toLowerCase() !== "cancelled"
+                            );
+                            if (existing) {
+                              toast.error("Thuốc này đã được kê và chưa bị hủy!");
+                            } else {
+                              setSelectedPrescriptions([
+                                ...selectedPrescriptions,
+                                {
+                                  type: "drug",
+                                  code: drug.name,
+                                  name: drug.name,
+                                  dosage: drug.dosage,
+                                  fee: drug.fee,
+                                  unit: drug.unit,
+                                  quantity: 1,
+                                  status: "pending",
+                                },
+                              ]);
+                              toast.success(`Đã thêm: ${drug.name}`);
                             }
                           }}
                           className="w-full text-left p-2 text-sm border border-gray-200 rounded-lg hover:bg-emerald-50 transition-colors"
@@ -500,15 +631,28 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                         <button
                           key={index}
                           onClick={() => {
-                            if (!selectedPrescriptions.find((p) => p.testName === test.testName && p.type === 'test')) {
-                              setSelectedPrescriptions([...selectedPrescriptions, { 
-                                name: test.testName,
-                                testName: test.testName,
-                                description: test.subcategory,
-                                subcategory: test.subcategory,
-                                fee: test.fee,
-                                type: 'test' 
-                              }]);
+                            const existing = selectedPrescriptions.find(
+                              (p) => p.name === test.testName && p.type === "test" && 
+                              p.status?.toLowerCase() !== "cancelled" && p.status?.toLowerCase() !== "confirmed"
+                            );
+                            if (existing) {
+                              toast.error("Xét nghiệm này đã được chỉ định và chưa hoàn tất!");
+                            } else {
+                              setSelectedPrescriptions([
+                                ...selectedPrescriptions,
+                                {
+                                  type: "test",
+                                  code: test.testName,
+                                  name: test.testName,
+                                  testName: test.testName,
+                                  description: test.subcategory,
+                                  subcategory: test.subcategory,
+                                  fee: test.fee,
+                                  unit: "lần",
+                                  status: "pending",
+                                },
+                              ]);
+                              toast.success(`Đã thêm: ${test.testName}`);
                             }
                           }}
                           className="w-full text-left p-2 text-sm border border-gray-200 rounded-lg hover:bg-emerald-50 transition-colors"
@@ -535,6 +679,19 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                         <div className="flex items-center space-x-2">
                           {item.type === 'drug' ? <Pill className="w-4 h-4 text-pink-600" /> : <TestTube className="w-4 h-4 text-blue-600" />}
                           <p className="text-sm font-semibold">{item.name}</p>
+                          
+                          {/* Show status badge */}
+                          {item.status && item.status !== 'Pending' && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              item.status === 'Confirmed' ? 'bg-green-100 text-green-700' :
+                              item.status === 'CancelRequested' ? 'bg-orange-100 text-orange-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {item.status === 'Confirmed' ? 'Đã xác nhận' :
+                               item.status === 'CancelRequested' ? 'Chờ duyệt hủy' :
+                               item.status}
+                            </span>
+                          )}
                         </div>
                         {item.type === 'drug' && (
                           <div className="flex items-center space-x-2 mt-2">
@@ -549,7 +706,7 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                                 setSelectedPrescriptions(newPrescriptions);
                               }}
                               className="w-20 px-2 py-1 text-sm border border-gray-300 rounded"
-                              disabled={isReadOnly}
+                              disabled={isReadOnly || !!(item.status && item.status !== 'Pending')}
                             />
                             <span className="text-xs text-gray-600">{item.unit}</span>
                           </div>
@@ -561,11 +718,37 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                             ? `${((item.fee || 0) * (item.quantity || 1)).toLocaleString()}đ`
                             : `${(item.fee || 0).toLocaleString()}đ`}
                         </p>
+                        
+                        {/* Show cancel reason if requested */}
+                        {item.status === 'CancelRequested' && item.cancelReason && (
+                          <p className="text-xs text-orange-600 mt-1 italic">
+                            Lý do hủy: {item.cancelReason}
+                          </p>
+                        )}
                       </div>
                       {!isReadOnly && (
                         <button
-                          onClick={() => setSelectedPrescriptions(selectedPrescriptions.filter((_, i) => i !== index))}
-                          className="text-red-600 hover:text-red-700 ml-2"
+                          onClick={() => {
+                            if (item.id && item.status) {
+                              // Item from database with status
+                              handleCancelPrescriptionItem(item.id, item.status);
+                            } else {
+                              // New item not yet saved - can delete directly
+                              setSelectedPrescriptions(selectedPrescriptions.filter((_, i) => i !== index));
+                            }
+                          }}
+                          disabled={item.status === 'CancelRequested' || item.status === 'Cancelled'}
+                          className={`ml-2 ${
+                            item.status === 'CancelRequested' || item.status === 'Cancelled'
+                              ? 'text-gray-400 cursor-not-allowed'
+                              : 'text-red-600 hover:text-red-700'
+                          }`}
+                          title={
+                            item.status === 'Cancelled' ? 'Đã bị hủy' :
+                            item.status === 'CancelRequested' ? 'Đang chờ duyệt hủy' :
+                            item.status === 'Confirmed' ? 'Yêu cầu hủy (đã xác nhận)' :
+                            'Xóa'
+                          }
                         >
                           <X className="w-5 h-5" />
                         </button>
@@ -637,6 +820,14 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
 
               {/* Action Buttons */}
               <div className="space-y-3 mt-6">
+                <button
+                  onClick={fetchHistory}
+                  className="w-full px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors font-semibold flex items-center justify-center space-x-2 shadow-lg"
+                >
+                  <FileText className="w-5 h-5" />
+                  <span>Xem lịch sử</span>
+                </button>
+
                 {!isReadOnly ? (
                   <>
                     <button
@@ -681,6 +872,103 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
             </div>
           </div>
         </div>
+
+      {/* History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-6 rounded-t-2xl flex items-center justify-between">
+              <h3 className="text-2xl font-bold">Lịch sử thay đổi</h3>
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {historyItems.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">Chưa có lịch sử thay đổi</p>
+              ) : (
+                historyItems.map((item) => (
+                  <div key={item.id} className="border border-gray-200 rounded-xl p-4 hover:border-indigo-300 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        item.action === 'Create' ? 'bg-green-100 text-green-700' :
+                        item.action === 'Update' ? 'bg-blue-100 text-blue-700' :
+                        item.action === 'Complete' ? 'bg-emerald-100 text-emerald-700' :
+                        'bg-purple-100 text-purple-700'
+                      }`}>
+                        {item.action === 'Create' ? 'Tạo mới' :
+                         item.action === 'Update' ? 'Cập nhật' :
+                         item.action === 'Complete' ? 'Hoàn thành' :
+                         'Nhập viện'}
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {new Date(item.createdAt).toLocaleString('vi-VN')}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mt-2 text-sm">
+                      <div className="bg-gray-50 p-2 rounded">
+                        <p className="text-xs text-gray-500">Phí thuốc</p>
+                        <p className="font-semibold">{item.medicineFee.toLocaleString()}đ</p>
+                      </div>
+                      <div className="bg-gray-50 p-2 rounded">
+                        <p className="text-xs text-gray-500">Phí XN</p>
+                        <p className="font-semibold">{item.testFee.toLocaleString()}đ</p>
+                      </div>
+                      <div className="bg-gray-50 p-2 rounded">
+                        <p className="text-xs text-gray-500">Phí khác</p>
+                        <p className="font-semibold">{item.otherFee.toLocaleString()}đ</p>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Modal */}
+      {showCancelModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+            <div className="bg-gradient-to-r from-red-500 to-orange-500 text-white p-6 rounded-t-2xl">
+              <h3 className="text-xl font-bold">Yêu cầu hủy</h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-600 mb-4">Vui lòng nhập lý do hủy mục này:</p>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={4}
+                placeholder="Ví dụ: Bệnh nhân không đủ điều kiện xét nghiệm..."
+                className="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+              />
+            </div>
+            <div className="bg-gray-50 p-6 rounded-b-2xl flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowCancelModal(false);
+                  setCancelItemId(null);
+                  setCancelReason('');
+                }}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors font-semibold"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={submitCancelRequest}
+                className="px-6 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-semibold"
+              >
+                Gửi yêu cầu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
