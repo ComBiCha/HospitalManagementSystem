@@ -536,28 +536,10 @@ namespace HospitalManagementSystem.API.Controllers
                     return BadRequest(new { message = "Doctor ID not found in token" });
                 }
 
-                var item = await _prescriptionItemRepository.GetByIdAsync(id);
-                if (item == null) return NotFound(new { message = "Item not found" });
+                var (success, message) = await _medicalRecordApplicationService.RequestCancelPrescriptionItemAsync(id, doctorId, request.Reason);
+                if (!success) return NotFound(new { message });
 
-                if (item.Status == "Pending")
-                {
-                    // Delete if still Pending
-                    await _prescriptionItemRepository.DeleteAsync(item);
-                }
-                else
-                {
-                    // Request cancel if already Confirmed
-                    item.IsCancelRequested = true;
-                    item.CancelReason = request.Reason;
-                    item.Status = "CancelRequested";
-                    item.CancelRequestedAt = DateTime.UtcNow;
-                    item.CancelRequestedByDoctorId = doctorId;
-                    item.UpdatedAt = DateTime.UtcNow;
-                    await _prescriptionItemRepository.UpdateAsync(item);
-                }
-
-                await _prescriptionItemRepository.SaveChangesAsync();
-                return Ok(new { message = "Đã yêu cầu hủy" });
+                return Ok(new { message });
             }
             catch (Exception ex)
             {
@@ -572,15 +554,10 @@ namespace HospitalManagementSystem.API.Controllers
         {
             try
             {
-                var item = await _prescriptionItemRepository.GetByIdAsync(id);
-                if (item == null) return NotFound(new { message = "Item not found" });
+                var (success, message) = await _medicalRecordApplicationService.ApproveCancelPrescriptionItemAsync(id);
+                if (!success) return NotFound(new { message });
 
-                item.Status = "Cancelled";
-                item.UpdatedAt = DateTime.UtcNow;
-
-                await _prescriptionItemRepository.UpdateAsync(item);
-                await _prescriptionItemRepository.SaveChangesAsync();
-                return Ok(new { message = "Đã duyệt hủy" });
+                return Ok(new { message });
             }
             catch (Exception ex)
             {
@@ -602,6 +579,28 @@ namespace HospitalManagementSystem.API.Controllers
             {
                 _logger.LogError(ex, "Error fetching medical record history");
                 return StatusCode(500, new { message = "Lỗi khi tải lịch sử" });
+            }
+        }
+
+        [HttpPost("prescription-items/{id}/complete")]
+        [Authorize(Roles = "Doctor,Admin,Nurse")]
+        public async Task<IActionResult> CompletePrescriptionItem(int id)
+        {
+            try
+            {
+                var (success, message) = await _medicalRecordApplicationService.CompletePrescriptionItemAsync(id);
+
+                if (!success)
+                {
+                    return BadRequest(new { message });
+                }
+
+                return Ok(new { message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error completing prescription item {Id}", id);
+                return StatusCode(500, new { message = "Lỗi khi hoàn thành xét nghiệm" });
             }
         }
     }

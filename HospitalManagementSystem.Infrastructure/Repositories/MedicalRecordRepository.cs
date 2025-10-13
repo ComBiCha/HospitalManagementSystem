@@ -49,6 +49,19 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 .ToListAsync();
         }
 
+        public async Task<IEnumerable<MedicalRecord>> GetByPatientIdAsync(int patientId, int page, int pageSize)
+        {
+            return await _context.MedicalRecords
+                .AsNoTracking()
+                .Include(m => m.Doctor)
+                .Include(m => m.Appointment)
+                .Where(m => m.PatientId == patientId)
+                .OrderByDescending(m => m.Appointment.Date)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+        }
+
         public async Task<IEnumerable<MedicalRecord>> GetByDoctorIdAsync(int doctorId)
         {
             return await _context.MedicalRecords

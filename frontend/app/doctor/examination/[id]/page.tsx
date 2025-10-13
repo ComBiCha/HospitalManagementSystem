@@ -59,6 +59,8 @@ interface PrescriptionItem extends ReferenceItem {
   id?: number; // ID from database if already saved
   status?: string; // Pending, Confirmed, CancelRequested, Cancelled
   cancelReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface MedicalRecordHistoryItem {
@@ -76,6 +78,24 @@ interface MedicalRecordHistoryItem {
   action: string;
   createdAt: string;
 }
+
+const formatDateTimeToVN = (dateString?: string) => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    return new Intl.DateTimeFormat('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'Asia/Ho_Chi_Minh'
+    }).format(date);
+  } catch (error) {
+    console.error('Error formatting date:', dateString, error);
+    return 'Invalid date';
+  }
+};
 
 export default function ExaminationPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -161,6 +181,8 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
           fee: dbItem.price,
           status: dbItem.status,
           cancelReason: dbItem.cancelReason,
+          createdAt: dbItem.createdAt,
+          updatedAt: dbItem.updatedAt,
         }));
         
         setSelectedPrescriptions(mergedPrescriptions);
@@ -324,6 +346,19 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
     } catch (error: any) {
       console.error('Error requesting cancel:', error);
       toast.error('Lỗi khi gửi yêu cầu!');
+    }
+  };
+
+  const handleCompleteTest = async (itemId: number) => {
+    if (!confirm('Xác nhận hoàn thành xét nghiệm này?')) return;
+
+    try {
+      await api.post(`/MedicalRecords/prescription-items/${itemId}/complete`);
+      toast.success('Đã hoàn thành xét nghiệm!');
+      await fetchData(); // Refresh data
+    } catch (error: any) {
+      console.error('Error completing test:', error);
+      toast.error(error.response?.data?.message || 'Lỗi khi cập nhật trạng thái!');
     }
   };
 
@@ -575,10 +610,10 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                           key={index}
                           onClick={() => {
                             const existing = selectedPrescriptions.find(
-                              (p) => p.name === drug.name && p.type === "drug" && p.status?.toLowerCase() !== "cancelled"
+                              (p) => p.name === drug.name && p.type === "drug" && p.status?.toLowerCase() !== "cancelled" && p.status?.toLowerCase() !== "confirmed"
                             );
                             if (existing) {
-                              toast.error("Thuốc này đã được kê và chưa bị hủy!");
+                              toast.error("Thuốc này đã được kê và chưa bị hủy/hoàn thành!");
                             } else {
                               setSelectedPrescriptions([
                                 ...selectedPrescriptions,
@@ -633,7 +668,7 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                           onClick={() => {
                             const existing = selectedPrescriptions.find(
                               (p) => p.name === test.testName && p.type === "test" && 
-                              p.status?.toLowerCase() !== "cancelled" && p.status?.toLowerCase() !== "confirmed"
+                              p.status?.toLowerCase() !== "cancelled" && p.status?.toLowerCase() !== "completed"
                             );
                             if (existing) {
                               toast.error("Xét nghiệm này đã được chỉ định và chưa hoàn tất!");
@@ -676,22 +711,27 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                       item.type === 'drug' ? 'bg-pink-50 border-pink-200' : 'bg-blue-50 border-blue-200'
                     }`}>
                       <div className="flex-1">
-                        <div className="flex items-center space-x-2">
-                          {item.type === 'drug' ? <Pill className="w-4 h-4 text-pink-600" /> : <TestTube className="w-4 h-4 text-blue-600" />}
-                          <p className="text-sm font-semibold">{item.name}</p>
-                          
-                          {/* Show status badge */}
-                          {item.status && item.status !== 'Pending' && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              item.status === 'Confirmed' ? 'bg-green-100 text-green-700' :
-                              item.status === 'CancelRequested' ? 'bg-orange-100 text-orange-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {item.status === 'Confirmed' ? 'Đã xác nhận' :
-                               item.status === 'CancelRequested' ? 'Chờ duyệt hủy' :
-                               item.status}
-                            </span>
-                          )}
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center space-x-2">
+                            {item.type === 'drug' ? <Pill className="w-4 h-4 text-pink-600" /> : <TestTube className="w-4 h-4 text-blue-600" />}
+                            <p className="text-sm font-semibold">{item.name}</p>
+                            
+                            {/* Show status badge */}
+                            {item.status && item.status !== 'Pending' && (
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                item.status === 'Confirmed' ? 'bg-green-100 text-green-700' :
+                                item.status === 'CancelRequested' ? 'bg-orange-100 text-orange-700' :
+                                'bg-gray-100 text-gray-700'
+                              }`}>
+                                {item.status === 'Confirmed' ? 'Đã xác nhận' :
+                                 item.status === 'CancelRequested' ? 'Chờ duyệt hủy' :
+                                 item.status}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-gray-500 whitespace-nowrap ml-2">
+                            {formatDateTimeToVN(item.updatedAt || item.createdAt)}
+                          </span>
                         </div>
                         {item.type === 'drug' && (
                           <div className="flex items-center space-x-2 mt-2">
@@ -726,33 +766,45 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                           </p>
                         )}
                       </div>
-                      {!isReadOnly && (
-                        <button
-                          onClick={() => {
-                            if (item.id && item.status) {
-                              // Item from database with status
-                              handleCancelPrescriptionItem(item.id, item.status);
-                            } else {
-                              // New item not yet saved - can delete directly
-                              setSelectedPrescriptions(selectedPrescriptions.filter((_, i) => i !== index));
+                      <div className="flex items-center space-x-2">
+                        {item.type === 'test' && item.status === 'Confirmed' && !isReadOnly && (
+                          <button
+                            onClick={() => handleCompleteTest(item.id!)}
+                            className="text-teal-600 hover:text-teal-700"
+                            title="Đánh dấu hoàn thành"
+                          >
+                            <CheckCircle className="w-5 h-5" />
+                          </button>
+                        )}
+                        {!isReadOnly && (
+                          <button
+                            onClick={() => {
+                              if (item.id && item.status) {
+                                // Item from database with status
+                                handleCancelPrescriptionItem(item.id, item.status);
+                              } else {
+                                // New item not yet saved - can delete directly
+                                setSelectedPrescriptions(selectedPrescriptions.filter((_, i) => i !== index));
+                              }
+                            }}
+                            disabled={item.status === 'CancelRequested' || item.status === 'Cancelled' || item.status === 'Completed'}
+                            className={`ml-2 ${
+                              item.status === 'CancelRequested' || item.status === 'Cancelled' || item.status === 'Completed'
+                                ? 'text-gray-400 cursor-not-allowed'
+                                : 'text-red-600 hover:text-red-700'
+                            }`}
+                            title={
+                              item.status === 'Completed' ? 'Đã hoàn thành, không thể xóa' :
+                              item.status === 'Cancelled' ? 'Đã bị hủy' :
+                              item.status === 'CancelRequested' ? 'Đang chờ duyệt hủy' :
+                              item.status === 'Confirmed' ? 'Yêu cầu hủy (đã xác nhận)' :
+                              'Xóa'
                             }
-                          }}
-                          disabled={item.status === 'CancelRequested' || item.status === 'Cancelled'}
-                          className={`ml-2 ${
-                            item.status === 'CancelRequested' || item.status === 'Cancelled'
-                              ? 'text-gray-400 cursor-not-allowed'
-                              : 'text-red-600 hover:text-red-700'
-                          }`}
-                          title={
-                            item.status === 'Cancelled' ? 'Đã bị hủy' :
-                            item.status === 'CancelRequested' ? 'Đang chờ duyệt hủy' :
-                            item.status === 'Confirmed' ? 'Yêu cầu hủy (đã xác nhận)' :
-                            'Xóa'
-                          }
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      )}
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}

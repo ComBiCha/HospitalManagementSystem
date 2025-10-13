@@ -7,6 +7,7 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<MedicalRecord?> GetByIdAsync(int id);
         Task<MedicalRecord?> GetByAppointmentIdAsync(int appointmentId);
         Task<IEnumerable<MedicalRecord>> GetByPatientIdAsync(int patientId);
+        Task<IEnumerable<MedicalRecord>> GetByPatientIdAsync(int patientId, int page, int pageSize);
         Task<IEnumerable<MedicalRecord>> GetByDoctorIdAsync(int doctorId);
         Task<MedicalRecord> CreateAsync(MedicalRecord medicalRecord);
         Task<MedicalRecord?> UpdateAsync(MedicalRecord medicalRecord);

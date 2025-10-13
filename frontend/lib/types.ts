@@ -51,15 +51,25 @@ export interface PatientIdentifier {
 
 // Appointment types
 export interface Appointment {
-  id: number
-  patientId: number
-  doctorId: number
-  date: string
-  status: string
-  createdAt: string
-  updatedAt: string
-  doctor?: Doctor
-  patient?: Patient
+  id: number;
+  patientId: number;
+  doctorId: number;
+  date: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  doctor?: Doctor;
+  patient?: Patient;
+  patientName?: string;
+  doctorName?: string;
+  doctorSpecialty?: string;
+  paymentExpiresAt?: string;
+}
+
+export interface AppointmentFilter {
+  status?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 // Doctor types
@@ -184,4 +194,24 @@ export interface Notification {
   metadata?: string; // Contains type and data
   createdAt: string;
   sentAt?: string;
+}
+
+export interface MedicalRecord {
+  id: number;
+  appointmentDate: string; // Comes as an ISO string
+  doctorName: string;
+  doctorSpecialty: string;
+  diagnosis: string; // This is a JSON string
+  symptoms: string; // This is a JSON string
+  treatment: string;
+  prescription: string; // This is a JSON string
+  notes: string;
+  consultationFee: number;
+  medicineFee: number;
+  testFee: number;
+  otherFee: number;
+  totalFee: number;
+  paidAmount: number;
+  paymentStatus: string;
+  appointmentStatus: string;
 }

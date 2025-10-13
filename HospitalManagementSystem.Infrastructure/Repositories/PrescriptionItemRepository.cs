@@ -27,11 +27,13 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 .ToListAsync();
         }
 
-        public async Task<PrescriptionItem?> GetByMedicalRecordAndCodeAsync(int medicalRecordId, string itemCode)
+        public async Task<PrescriptionItem?> GetActiveByMedicalRecordAndCodeAsync(int medicalRecordId, string itemCode)
         {
             return await _context.PrescriptionItems
                 .FirstOrDefaultAsync(p => p.MedicalRecordId == medicalRecordId && 
-                                        p.ItemCode.ToLower() == itemCode.ToLower());
+                                        p.ItemCode.ToLower() == itemCode.ToLower() &&
+                                        p.Status != "Cancelled" &&
+                                        p.Status != "Completed");
         }
 
         public async Task AddAsync(PrescriptionItem item)

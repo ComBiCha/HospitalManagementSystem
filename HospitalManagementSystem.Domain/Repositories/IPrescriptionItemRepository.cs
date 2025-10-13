@@ -6,7 +6,7 @@ namespace HospitalManagementSystem.Domain.Repositories
     {
         Task<PrescriptionItem?> GetByIdAsync(int id);
         Task<List<PrescriptionItem>> GetByMedicalRecordIdAsync(int medicalRecordId);
-        Task<PrescriptionItem?> GetByMedicalRecordAndCodeAsync(int medicalRecordId, string itemCode);
+        Task<PrescriptionItem?> GetActiveByMedicalRecordAndCodeAsync(int medicalRecordId, string itemCode);
         Task AddAsync(PrescriptionItem item);
         Task UpdateAsync(PrescriptionItem item);
         Task DeleteAsync(PrescriptionItem item);

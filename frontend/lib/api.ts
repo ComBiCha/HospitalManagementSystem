@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { AppointmentFilter } from './types';
 
 // API URL configuration
 const API_URL = typeof window === 'undefined' 
@@ -150,6 +151,8 @@ export const appointmentApi = {
     api.get('/Appointments/my-appointments', { 
       params: { startDate, endDate } 
     }),
+  getFilteredAppointments: (params: AppointmentFilter & { page?: number, pageSize?: number }) => 
+    api.get('/patient-portal/appointments', { params }),
   getById: (id: number) => api.get(`/Appointments/${id}`),
   updateStatus: (id: number, status: string) => 
     api.put(`/Appointments/${id}/status`, { status }),

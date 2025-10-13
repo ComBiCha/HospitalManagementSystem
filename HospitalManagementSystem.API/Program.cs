@@ -96,6 +96,7 @@ builder.Services.AddScoped<IMedicalRecordRepository, MedicalRecordRepository>();
 builder.Services.AddScoped<IPrescriptionItemRepository, PrescriptionItemRepository>();
 builder.Services.AddScoped<IMedicalRecordHistoryRepository, MedicalRecordHistoryRepository>();
 builder.Services.AddScoped<MedicalRecordApplicationService>();
+builder.Services.AddScoped<AppointmentApplicationService>();
 builder.Services.AddScoped<AppointmentExaminationService>();
 
 // Redis ConnectionMultiplexer

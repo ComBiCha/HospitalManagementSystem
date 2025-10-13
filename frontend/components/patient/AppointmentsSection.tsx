@@ -1,24 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
-import { Calendar, Clock, User, Stethoscope, X, Trash2, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { api, appointmentApi } from '@/lib/api';
+import { Appointment, AppointmentFilter } from '@/lib/types';
+import { Calendar, Clock, User, Stethoscope, X, Trash2, AlertCircle, Filter, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface AppointmentsSectionProps {
   patientId: number | null;
-}
-
-interface Appointment {
-  id: number;
-  patientId: number;
-  doctorId: number;
-  date: string;
-  status: string;
-  patientName: string;
-  doctorName: string;
-  doctorSpecialty: string;
-  paymentExpiresAt?: string;
 }
 
 interface TimeSlot {
@@ -32,6 +21,16 @@ interface AvailableDoctor {
   name: string;
   specialty: string;
   email: string;
+}
+
+interface PagedAppointments {
+  items: Appointment[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
 }
 
 // Countdown Timer Component
@@ -71,7 +70,7 @@ const CountdownTimer = ({ expiresAt }: { expiresAt: string }) => {
 };
 
 export default function AppointmentsSection({ patientId }: AppointmentsSectionProps) {
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [pagedAppointments, setPagedAppointments] = useState<PagedAppointments | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   
@@ -85,23 +84,43 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [availableDoctors, setAvailableDoctors] = useState<AvailableDoctor[]>([]);
 
-  useEffect(() => {
-    if (patientId) {
-      fetchAppointments();
-    }
-  }, [patientId]);
+  const [filters, setFilters] = useState<AppointmentFilter>({});
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchAppointments = async () => {
+  const fetchAppointments = useCallback(async (page = 1) => {
     if (!patientId) return;
     setIsLoading(true);
     try {
-      const response = await api.get(`/appointments/patient/${patientId}`);
-      setAppointments(response.data || []);
+      const params = { ...filters, page, pageSize: 5 };
+      const response = await appointmentApi.getFilteredAppointments(params);
+      setPagedAppointments(response.data || null);
+      setCurrentPage(page);
     } catch (error) {
       console.error('Error fetching appointments:', error);
+      toast.error('Không thể tải danh sách lịch hẹn.');
     } finally {
       setIsLoading(false);
     }
+  }, [patientId, filters]);
+
+  useEffect(() => {
+    if (patientId) {
+      fetchAppointments(1); // Fetch first page on initial load or patient change
+    }
+  }, [patientId]); // Removed fetchAppointments from dependency array to prevent re-triggering
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value || undefined })); // Set to undefined if empty
+  };
+
+  const handleApplyFilters = () => {
+    setCurrentPage(1); // Reset to first page when filters change
+    fetchAppointments(1);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    fetchAppointments(newPage);
   };
 
   const fetchSpecialties = async () => {
@@ -178,13 +197,12 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
   const handleBookAppointment = async () => {
     if (!patientId || !selectedDoctor || !selectedDate || !selectedTime) return;
     
-    // Filter valid appointments - exclude Cancelled and ExpiredPayment
-    const appointmentsOnDate = appointments.filter(apt => {
+    const appointmentsOnDate = pagedAppointments?.items.filter(apt => {
       const aptDate = new Date(apt.date).toISOString().split('T')[0];
       return aptDate === selectedDate && 
              apt.status !== 'Cancelled' && 
              apt.status !== 'ExpiredPayment';
-    });
+    }) || [];
     
     if (appointmentsOnDate.length >= 2) {
       toast.error('Bạn chỉ có thể đặt tối đa 2 lịch khám trong 1 ngày!');
@@ -204,11 +222,9 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
     
     setIsLoading(true);
     try {
-      // Convert to local datetime first, then to ISO string
       const localDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
       const appointmentDateTime = localDateTime.toISOString();
       
-      // Step 1: Create appointment (Status = PendingPayment)
       const appointmentResponse = await api.post('/appointments', {
         patientId,
         doctorId: selectedDoctor,
@@ -216,17 +232,13 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
       });
       
       const appointmentId = appointmentResponse.data.id;
-      
       toast.success('Đặt lịch thành công! Đang chuyển đến trang thanh toán...');
       
-      // Step 2: Create payment and get Stripe checkout URL
       const paymentResponse = await api.post('/payments/booking-fee', {
         appointmentId
       });
       
       const { checkoutUrl } = paymentResponse.data;
-      
-      // Step 3: Redirect to Stripe checkout
       window.location.href = checkoutUrl;
       
     } catch (error: any) {
@@ -278,7 +290,7 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
     try {
       await api.delete(`/appointments/${appointmentId}`);
       toast.success('Hủy lịch khám thành công!');
-      fetchAppointments();
+      fetchAppointments(currentPage);
     } catch (error) {
       console.error('Error cancelling appointment:', error);
       toast.error('Hủy lịch khám thất bại!');
@@ -316,118 +328,195 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
         </button>
       </div>
 
+      {/* Filter Section */}
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          <div>
+            <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
+            <select
+              id="status"
+              name="status"
+              value={filters.status || ''}
+              onChange={handleFilterChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Tất cả</option>
+              <option value="Scheduled">Đã xác nhận</option>
+              <option value="PendingPayment">Chờ thanh toán</option>
+              <option value="Completed">Đã hoàn thành</option>
+              <option value="Cancelled">Đã hủy</option>
+              <option value="ExpiredPayment">Hết hạn</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">Từ ngày</label>
+            <input
+              type="date"
+              id="startDate"
+              name="startDate"
+              value={filters.startDate || ''}
+              onChange={handleFilterChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">Đến ngày</label>
+            <input
+              type="date"
+              id="endDate"
+              name="endDate"
+              value={filters.endDate || ''}
+              onChange={handleFilterChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <button
+            onClick={handleApplyFilters}
+            className="inline-flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+          >
+            <Search className="w-5 h-5 mr-2" />
+            Tìm kiếm
+          </button>
+        </div>
+      </div>
+
       {/* Appointments List */}
-      {isLoading && appointments.length === 0 ? (
+      {isLoading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
         </div>
-      ) : appointments.length === 0 ? (
+      ) : !pagedAppointments || pagedAppointments.items.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
           <Calendar className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Chưa có lịch hẹn</h3>
-          <p className="text-gray-500">Bạn chưa có lịch hẹn nào được đặt.</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Không tìm thấy lịch hẹn</h3>
+          <p className="text-gray-500">Không có lịch hẹn nào phù hợp với tiêu chí tìm kiếm của bạn.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {appointments.map((appointment) => {
-            const canCancel = canCancelAppointment(appointment.date);
-            return (
-              <div key={appointment.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-4 mb-4">
-                      <div className="flex items-center text-gray-600">
-                        <Calendar className="w-5 h-5 mr-2 text-blue-500" />
-                        <span className="font-medium">{formatDateTime(appointment.date)}</span>
-                      </div>
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                        appointment.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
-                        appointment.status === 'PendingPayment' ? 'bg-yellow-100 text-yellow-800' :
-                        appointment.status === 'Completed' ? 'bg-green-100 text-green-800' :
-                        appointment.status === 'ExpiredPayment' ? 'bg-gray-100 text-gray-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {appointment.status === 'PendingPayment' ? 'Chờ thanh toán' :
-                         appointment.status === 'Scheduled' ? 'Đã xác nhận' :
-                         appointment.status === 'ExpiredPayment' ? 'Hết hạn' :
-                         appointment.status}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div className="flex items-center text-gray-700">
-                        <User className="w-5 h-5 mr-2 text-gray-400" />
-                        <div>
-                          <p className="text-xs text-gray-500">Bác sĩ</p>
-                          <p className="font-semibold">{appointment.doctorName}</p>
+        <div>
+          <div className="grid grid-cols-1 gap-4">
+            {pagedAppointments.items.map((appointment) => {
+              const canCancel = canCancelAppointment(appointment.date);
+              return (
+                <div key={appointment.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-4 mb-4">
+                        <div className="flex items-center text-gray-600">
+                          <Calendar className="w-5 h-5 mr-2 text-blue-500" />
+                          <span className="font-medium">{formatDateTime(appointment.date)}</span>
                         </div>
+                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                          appointment.status === 'Scheduled' ? 'bg-blue-100 text-blue-800' :
+                          appointment.status === 'PendingPayment' ? 'bg-yellow-100 text-yellow-800' :
+                          appointment.status === 'Completed' ? 'bg-green-100 text-green-800' :
+                          appointment.status === 'ExpiredPayment' ? 'bg-gray-100 text-gray-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {appointment.status === 'PendingPayment' ? 'Chờ thanh toán' :
+                           appointment.status === 'Scheduled' ? 'Đã xác nhận' :
+                           appointment.status === 'ExpiredPayment' ? 'Hết hạn' :
+                           appointment.status}
+                        </span>
                       </div>
-                      <div className="flex items-center text-gray-700">
-                        <Stethoscope className="w-5 h-5 mr-2 text-gray-400" />
-                        <div>
-                          <p className="text-xs text-gray-500">Chuyên khoa</p>
-                          <p className="font-semibold">{appointment.doctorSpecialty}</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Action buttons */}
-                    {appointment.status === 'PendingPayment' && (
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-3">
-                          <button
-                            onClick={async () => {
-                              try {
-                                const response = await api.post('/payments/booking-fee', {
-                                  appointmentId: appointment.id
-                                });
-                                window.location.href = response.data.checkoutUrl;
-                              } catch (error) {
-                                toast.error('Không thể tạo thanh toán');
-                              }
-                            }}
-                            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
-                          >
-                            💳 Thanh toán ngay
-                          </button>
-                        </div>
-                        {appointment.paymentExpiresAt && (
-                          <div className="flex items-center space-x-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                            <Clock className="w-4 h-4 text-orange-600" />
-                            <span className="text-xs text-orange-700">Còn lại:</span>
-                            <CountdownTimer expiresAt={appointment.paymentExpiresAt} />
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="flex items-center text-gray-700">
+                          <User className="w-5 h-5 mr-2 text-gray-400" />
+                          <div>
+                            <p className="text-xs text-gray-500">Bác sĩ</p>
+                            <p className="font-semibold">{appointment.doctorName}</p>
                           </div>
-                        )}
-                      </div>
-                    )}                    {appointment.status === 'Scheduled' && (
-                      <div className="flex items-center">
-                        {canCancel ? (
-                          <button
-                            onClick={() => handleCancelAppointment(appointment.id, appointment.date)}
-                            disabled={isLoading}
-                            className="inline-flex items-center px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
-                          >
-                            <Trash2 className="w-4 h-4 mr-1.5" />
-                            Hủy lịch
-                          </button>
-                        ) : (
-                          <div className="flex items-center text-xs text-gray-500">
-                            <AlertCircle className="w-4 h-4 mr-1.5" />
-                            Không thể hủy (phải trước 6 giờ)
+                        </div>
+                        <div className="flex items-center text-gray-700">
+                          <Stethoscope className="w-5 h-5 mr-2 text-gray-400" />
+                          <div>
+                            <p className="text-xs text-gray-500">Chuyên khoa</p>
+                            <p className="font-semibold">{appointment.doctorSpecialty}</p>
                           </div>
-                        )}
+                        </div>
                       </div>
-                    )}
-                    
-                    {appointment.status === 'ExpiredPayment' && (
-                      <div className="text-xs text-gray-500">
-                        Hết hạn thanh toán - Vui lòng đặt lại lịch khám
-                      </div>
-                    )}
+                      
+                      {/* Action buttons */}
+                      {appointment.status === 'PendingPayment' && (
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-3">
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const response = await api.post('/payments/booking-fee', {
+                                    appointmentId: appointment.id
+                                  });
+                                  window.location.href = response.data.checkoutUrl;
+                                } catch (error) {
+                                  toast.error('Không thể tạo thanh toán');
+                                }
+                              }}
+                              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                            >
+                              💳 Thanh toán ngay
+                            </button>
+                          </div>
+                          {appointment.paymentExpiresAt && (
+                            <div className="flex items-center space-x-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                              <Clock className="w-4 h-4 text-orange-600" />
+                              <span className="text-xs text-orange-700">Còn lại:</span>
+                              <CountdownTimer expiresAt={appointment.paymentExpiresAt} />
+                            </div>
+                          )}
+                        </div>
+                      )}                    {appointment.status === 'Scheduled' && (
+                        <div className="flex items-center">
+                          {canCancel ? (
+                            <button
+                              onClick={() => handleCancelAppointment(appointment.id, appointment.date)}
+                              disabled={isLoading}
+                              className="inline-flex items-center px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
+                            >
+                              <Trash2 className="w-4 h-4 mr-1.5" />
+                              Hủy lịch
+                            </button>
+                          ) : (
+                            <div className="flex items-center text-xs text-gray-500">
+                              <AlertCircle className="w-4 h-4 mr-1.5" />
+                              Không thể hủy (phải trước 6 giờ)
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {appointment.status === 'ExpiredPayment' && (
+                        <div className="text-xs text-gray-500">
+                          Hết hạn thanh toán - Vui lòng đặt lại lịch khám
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between mt-4">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={!pagedAppointments.hasPreviousPage || isLoading}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ChevronLeft className="w-5 h-5 mr-2" />
+              Trước
+            </button>
+            <span className="text-sm text-gray-700">
+              Trang <span className="font-medium">{pagedAppointments.page}</span> / <span className="font-medium">{pagedAppointments.totalPages}</span>
+            </span>
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={!pagedAppointments.hasNextPage || isLoading}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Sau
+              <ChevronRight className="w-5 h-5 ml-2" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -526,8 +615,7 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
                             selectedTime === slot.displayTime
                               ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
                               : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
-                          }`}
-                        >
+                          }`}>
                           {slot.displayTime}
                         </button>
                       ))}
@@ -564,8 +652,7 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
                           selectedSpecialty === specialty
                             ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
                             : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
-                        }`}
-                      >
+                        }`}>
                         <Stethoscope className={`w-4 h-4 inline mr-2 ${selectedSpecialty === specialty ? 'text-white' : 'text-blue-600'}`} />
                         {specialty}
                       </button>
@@ -608,8 +695,7 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
                             selectedDoctor === doctor.id
                               ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
                               : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
-                          }`}
-                        >
+                          }`}>
                           <div className="flex items-center">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${
                               selectedDoctor === doctor.id ? 'bg-white text-blue-600' : 'bg-blue-100 text-blue-600'

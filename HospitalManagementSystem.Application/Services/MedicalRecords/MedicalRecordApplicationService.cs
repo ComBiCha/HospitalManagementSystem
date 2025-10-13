@@ -3,6 +3,7 @@ using HospitalManagementSystem.Application.DTOs.MedicalRecord;
 using HospitalManagementSystem.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using HospitalManagementSystem.Domain.Caching;
 
 public class MedicalRecordApplicationService
 {
@@ -11,19 +12,22 @@ public class MedicalRecordApplicationService
     private readonly IAppointmentRepository _appointmentRepository;
     private readonly IPrescriptionItemRepository _prescriptionItemRepository;
     private readonly IMedicalRecordHistoryRepository _medicalRecordHistoryRepository;
+    private readonly ICacheService _cacheService;
 
     public MedicalRecordApplicationService(
         IMedicalRecordRepository medicalRecordRepository,
         IAppointmentRepository appointmentRepository,
         IPrescriptionItemRepository prescriptionItemRepository,
         IMedicalRecordHistoryRepository medicalRecordHistoryRepository,
-        ILogger<MedicalRecordApplicationService> logger)
+        ILogger<MedicalRecordApplicationService> logger,
+        ICacheService cacheService)
     {
         _medicalRecordRepository = medicalRecordRepository;
         _appointmentRepository = appointmentRepository;
         _prescriptionItemRepository = prescriptionItemRepository;
         _medicalRecordHistoryRepository = medicalRecordHistoryRepository;
         _logger = logger;
+        _cacheService = cacheService;
     }
     public async Task<MedicalRecordDto?> GetMedicalRecordByAppointmentAsync(int appointmentId, int doctorId)
     {
@@ -137,6 +141,9 @@ public class MedicalRecordApplicationService
         await _medicalRecordRepository.UpdateAsync(medicalRecord);
         await _medicalRecordHistoryRepository.SaveChangesAsync();
 
+        await _cacheService.RemovePatternAsync($"patient:{medicalRecord.PatientId}:medical-records:*");
+        _logger.LogInformation("Cleared medical record cache for patient {PatientId}", medicalRecord.PatientId);
+
         return ("Cập nhật thành công", MapToDto(medicalRecord, paidAmount));
     }
 
@@ -169,7 +176,6 @@ public class MedicalRecordApplicationService
             await _appointmentRepository.UpdateAsync(medicalRecord.Appointment);
         }
 
-        // Save history snapshot
         var history = new MedicalRecordHistory
         {
             MedicalRecordId = medicalRecord.Id,
@@ -190,7 +196,49 @@ public class MedicalRecordApplicationService
         await _medicalRecordRepository.UpdateAsync(medicalRecord);
         await _medicalRecordHistoryRepository.SaveChangesAsync();
 
+        await _cacheService.RemovePatternAsync($"patient:{medicalRecord.PatientId}:medical-records:*");
+        _logger.LogInformation("Cleared medical record cache for patient {PatientId}", medicalRecord.PatientId);
+
         return ("Hoàn thành khám bệnh", true);
+    }
+
+    public async Task<IEnumerable<PatientMedicalRecordDto>> GetMedicalRecordsForPatientAsync(int patientId, int page, int pageSize)
+    {
+        var cacheKey = $"patient:{patientId}:medical-records:page:{page}:{pageSize}";
+        var cachedRecords = await _cacheService.GetAsync<IEnumerable<PatientMedicalRecordDto>>(cacheKey);
+
+        if (cachedRecords != null)
+        {
+            _logger.LogInformation("Cache HIT for key: {CacheKey}", cacheKey);
+            return cachedRecords;
+        }
+
+        _logger.LogInformation("Cache MISS for key: {CacheKey}", cacheKey);
+        var records = await _medicalRecordRepository.GetByPatientIdAsync(patientId, page, pageSize);
+
+        var dtos = records.Select(m => new PatientMedicalRecordDto
+        {
+            Id = m.Id,
+            AppointmentDate = m.Appointment.Date,
+            DoctorName = m.Doctor.Name,
+            DoctorSpecialty = m.Doctor.Specialty,
+            Diagnosis = m.Diagnosis, 
+            Symptoms = m.Symptoms,
+            Treatment = m.Treatment,
+            Prescription = m.Prescription,
+            Notes = m.Notes,
+            ConsultationFee = m.ConsultationFee,
+            MedicineFee = m.MedicineFee,
+            TestFee = m.TestFee,
+            OtherFee = m.OtherFee,
+            PaidAmount = m.PaidAmount,
+            PaymentStatus = m.PaymentStatus,
+            AppointmentStatus = m.Appointment.Status
+        }).ToList();
+
+        await _cacheService.SetAsync(cacheKey, dtos, TimeSpan.FromHours(1));
+
+        return dtos;
     }
 
     public async Task<(string Message, MedicalRecordDto? MedicalRecord)> HospitalizeMedicalRecordAsync(int id)
@@ -206,7 +254,6 @@ public class MedicalRecordApplicationService
             await _appointmentRepository.UpdateAsync(medicalRecord.Appointment);
         }
 
-        // Save history snapshot
         var history = new MedicalRecordHistory
         {
             MedicalRecordId = medicalRecord.Id,
@@ -227,11 +274,91 @@ public class MedicalRecordApplicationService
         await _medicalRecordRepository.UpdateAsync(medicalRecord);
         await _medicalRecordHistoryRepository.SaveChangesAsync();
 
+        await _cacheService.RemovePatternAsync($"patient:{medicalRecord.PatientId}:medical-records:*");
+        _logger.LogInformation("Cleared medical record cache for patient {PatientId}", medicalRecord.PatientId);
+
         var paidAmount = medicalRecord.Payments
             .Where(p => p.Status == "Completed")
             .Sum(p => p.Amount);
 
         return ("Đã chuyển nhập viện", MapToDto(medicalRecord, paidAmount));
+    }
+
+    public async Task<(bool Success, string Message)> CompletePrescriptionItemAsync(int id)
+    {
+        var item = await _prescriptionItemRepository.GetByIdAsync(id);
+        if (item == null) return (false, "Item not found");
+
+        if (item.ItemType != "Test")
+        {
+            return (false, "Only test items can be completed.");
+        }
+
+        if (item.Status != "Confirmed")
+        {
+            return (false, $"Cannot complete test with status: {item.Status}");
+        }
+
+        item.Status = "Completed";
+        item.UpdatedAt = DateTime.UtcNow;
+
+        await _prescriptionItemRepository.UpdateAsync(item);
+        await _prescriptionItemRepository.SaveChangesAsync();
+
+        await InvalidatePatientMedicalRecordCache(item.MedicalRecordId);
+        
+        _logger.LogInformation("Prescription item {Id} marked as completed.", id);
+        return (true, "Xét nghiệm đã được hoàn thành");
+    }
+
+    public async Task<(bool Success, string Message)> RequestCancelPrescriptionItemAsync(int id, int doctorId, string reason)
+    {
+        var item = await _prescriptionItemRepository.GetByIdAsync(id);
+        if (item == null) return (false, "Item not found");
+
+        if (item.Status == "Pending")
+        {
+            await _prescriptionItemRepository.DeleteAsync(item);
+        }
+        else
+        {
+            item.IsCancelRequested = true;
+            item.CancelReason = reason;
+            item.Status = "CancelRequested";
+            item.CancelRequestedAt = DateTime.UtcNow;
+            item.CancelRequestedByDoctorId = doctorId;
+            item.UpdatedAt = DateTime.UtcNow;
+            await _prescriptionItemRepository.UpdateAsync(item);
+        }
+
+        await _prescriptionItemRepository.SaveChangesAsync();
+        await InvalidatePatientMedicalRecordCache(item.MedicalRecordId);
+        return (true, "Đã yêu cầu hủy");
+    }
+
+    public async Task<(bool Success, string Message)> ApproveCancelPrescriptionItemAsync(int id)
+    {
+        var item = await _prescriptionItemRepository.GetByIdAsync(id);
+        if (item == null) return (false, "Item not found");
+
+        item.Status = "Cancelled";
+        item.UpdatedAt = DateTime.UtcNow;
+
+        await _prescriptionItemRepository.UpdateAsync(item);
+        await _prescriptionItemRepository.SaveChangesAsync();
+
+        await InvalidatePatientMedicalRecordCache(item.MedicalRecordId);
+        return (true, "Đã duyệt hủy");
+    }
+
+    private async Task InvalidatePatientMedicalRecordCache(int medicalRecordId)
+    {
+        var record = await _medicalRecordRepository.GetByIdAsync(medicalRecordId);
+        if (record != null)
+        {
+            await _cacheService.RemovePatternAsync($"patient:{record.PatientId}:medical-records:*");
+            _logger.LogInformation("Cleared medical record cache for patient {PatientId}", record.PatientId);
+        }
     }
 
     private async Task SyncPrescriptionItemsAsync(int medicalRecordId, string prescriptionJson)
@@ -246,76 +373,72 @@ public class MedicalRecordApplicationService
             };
             
             var prescriptionList = JsonSerializer.Deserialize<List<PrescriptionItemDto>>(prescriptionJson, options);
-            if (prescriptionList == null || prescriptionList.Count == 0)
+            if (prescriptionList == null)
             {
-                _logger.LogWarning("No prescription items to sync");
+                _logger.LogWarning("Prescription list is null, cannot sync.");
                 return;
             }
 
-            foreach (var item in prescriptionList)
+            foreach (var itemDto in prescriptionList)
             {
-                // Determine ItemType based on type field
-                var itemType = item.Type?.ToLower() == "drug" ? "Medicine" : "Test";
-                var itemCode = (item.Code ?? item.Name ?? "").Trim();
-                
+                var itemCode = (itemDto.Code ?? itemDto.Name ?? "").Trim();
                 if (string.IsNullOrEmpty(itemCode))
                 {
-                    _logger.LogWarning("Skipping item with empty code: {Item}", JsonSerializer.Serialize(item));
+                    _logger.LogWarning("Skipping item with empty code: {Item}", JsonSerializer.Serialize(itemDto));
                     continue;
                 }
-                
-                _logger.LogInformation("Processing item: Type={Type}, Code={Code}, Name={Name}", itemType, itemCode, item.Name);
-                
-                // Find existing item
-                var existingItem = await _prescriptionItemRepository.GetByMedicalRecordAndCodeAsync(medicalRecordId, itemCode);
 
-                if (existingItem == null)
+                // Case 1: The item from the frontend has an ID. It's an existing item.
+                if (itemDto.Id.HasValue && itemDto.Id > 0)
                 {
-                    var newItem = new PrescriptionItem
+                    var dbItem = await _prescriptionItemRepository.GetByIdAsync(itemDto.Id.Value);
+                    if (dbItem != null)
                     {
-                        MedicalRecordId = medicalRecordId,
-                        ItemType = itemType,
-                        ItemCode = itemCode,
-                        ItemName = item.Name ?? "",
-                        Quantity = item.Quantity,
-                        Unit = item.Unit ?? (itemType == "Medicine" ? "viên" : "lần"),
-                        Price = item.Fee ?? 0,
-                        Status = "Confirmed",
-                        CreatedAt = DateTime.UtcNow
-                    };
-                    
-                    await _prescriptionItemRepository.AddAsync(newItem);
-                    
-                    _logger.LogInformation("Added new PrescriptionItem: Type={Type}, Code={Code}, Name={Name}, Fee={Fee}, Status=Confirmed", 
-                        itemType, itemCode, item.Name, item.Fee);
+                        // Only update items that are not in a terminal state.
+                        if (dbItem.Status == "Pending" || dbItem.Status == "Confirmed")
+                        {
+                            dbItem.Quantity = itemDto.Quantity;
+                            dbItem.ItemName = itemDto.Name ?? dbItem.ItemName;
+                            dbItem.Unit = itemDto.Unit ?? dbItem.Unit;
+                            dbItem.Price = itemDto.Fee ?? dbItem.Price;
+                            dbItem.UpdatedAt = DateTime.UtcNow;
+                            await _prescriptionItemRepository.UpdateAsync(dbItem);
+                            _logger.LogInformation("Updated existing PrescriptionItem {Id}", dbItem.Id);
+                        }
+                        else if (dbItem.Status == "CancelRequested")
+                        {
+                            dbItem.Status = "Cancelled";
+                            dbItem.UpdatedAt = DateTime.UtcNow;
+                            await _prescriptionItemRepository.UpdateAsync(dbItem);
+                            _logger.LogInformation("Cancelled PrescriptionItem {Id} via draft save.", dbItem.Id);
+                        }
+                        // If status is already Cancelled or Completed, we do nothing to the existing record.
+                    }
                 }
-                else if (existingItem.Status == "Pending" || existingItem.Status == "Confirmed")
-                {
-                    existingItem.ItemName = item.Name ?? existingItem.ItemName;
-                    existingItem.Quantity = item.Quantity;
-                    existingItem.Unit = item.Unit ?? existingItem.Unit;
-                    existingItem.Price = item.Fee ?? existingItem.Price;
-                    existingItem.Status = "Confirmed";
-                    existingItem.UpdatedAt = DateTime.UtcNow;
-                    
-                    await _prescriptionItemRepository.UpdateAsync(existingItem);
-                    
-                    _logger.LogInformation("Updated PrescriptionItem {Id}: Quantity={Quantity}, Price={Price}, Status=Confirmed", 
-                        existingItem.Id, item.Quantity, item.Fee);
-                }
-                else if (existingItem.Status == "CancelRequested")
-                {
-                    existingItem.Status = "Cancelled";
-                    existingItem.UpdatedAt = DateTime.UtcNow;
-                    
-                    await _prescriptionItemRepository.UpdateAsync(existingItem);
-                    
-                    _logger.LogInformation("Cancelled PrescriptionItem {Id} (was CancelRequested)", existingItem.Id);
-                }
+                // Case 2: The item from the frontend has NO ID. It's a new item.
                 else
                 {
-                    _logger.LogWarning("Cannot update PrescriptionItem {Id} with status {Status}", 
-                        existingItem.Id, existingItem.Status);
+                    // Before creating, we must check if an ACTIVE item with the same code already exists.
+                    var activeExistingItem = await _prescriptionItemRepository.GetActiveByMedicalRecordAndCodeAsync(medicalRecordId, itemCode);
+                    if (activeExistingItem == null)
+                    {
+                        // No active item exists, so we can create this new one.
+                        var newItem = new PrescriptionItem
+                        {
+                            MedicalRecordId = medicalRecordId,
+                            ItemType = itemDto.Type?.ToLower() == "drug" ? "Medicine" : "Test",
+                            ItemCode = itemCode,
+                            ItemName = itemDto.Name ?? "",
+                            Quantity = itemDto.Quantity,
+                            Unit = itemDto.Unit ?? (itemDto.Type?.ToLower() == "drug" ? "viên" : "lần"),
+                            Price = itemDto.Fee ?? 0,
+                            Status = "Confirmed", // New items are confirmed by default when saved.
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        await _prescriptionItemRepository.AddAsync(newItem);
+                        _logger.LogInformation("Added new PrescriptionItem: Code={Code}", itemCode);
+                    }
+                    // If activeExistingItem is NOT null, we do nothing to prevent creating a duplicate active item.
                 }
             }
 
@@ -376,6 +499,9 @@ public class MedicalRecordApplicationService
 
 public class PrescriptionItemDto
 {
+    [System.Text.Json.Serialization.JsonPropertyName("id")]
+    public int? Id { get; set; }
+
     [System.Text.Json.Serialization.JsonPropertyName("code")]
     public string? Code { get; set; }
     
