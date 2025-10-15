@@ -1,12 +1,11 @@
 pipeline {
-    // Định nghĩa một agent chạy trên Kubernetes với các container công cụ cần thiết
     agent {
         kubernetes {
-            // Dùng file yaml để định nghĩa pod agent một cách chi tiết
             yaml """
 apiVersion: v1
 kind: Pod
 spec:
+  serviceAccountName: 'jenkins'
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
@@ -62,7 +61,7 @@ spec:
     stages {
         stage('Checkout') {
             steps {
-                container('jnlp') { // Chạy trong container mặc định
+                container('jnlp') {
                     echo 'Checking out source code...'
                     checkout scm
                 }
@@ -71,7 +70,7 @@ spec:
 
         stage('Setup Configuration') {
             steps {
-                container('kubectl') { // Chuyển sang container kubectl
+                container('kubectl') {
                     echo 'Applying Kubernetes configurations...'
                     sh "kubectl delete configmap hms-api-config || true"
                     sh "kubectl create configmap hms-api-config --from-env-file=.env"
@@ -80,10 +79,9 @@ spec:
         }
 
         stage('Build & Push Backend') {
-            // Chạy nếu là build đầu tiên HOẶC có thay đổi trong folder backend
             when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "HospitalManagementSystem.API/**" } }
             steps {
-                container('docker') { // Chuyển sang container docker
+                container('docker') {
                     script {
                         echo "Building Backend Image: ${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG}"
                         withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
@@ -102,7 +100,7 @@ spec:
         stage('Deploy Backend') {
             when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "HospitalManagementSystem.API/**" } }
             steps {
-                container('kubectl') { // Chuyển sang container kubectl
+                container('kubectl') {
                     script {
                         echo "Deploying new Backend image..."
                         sh "kubectl set image deployment/hms-api hms-api=${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG}"
@@ -116,7 +114,7 @@ spec:
         stage('Build & Push Frontend') {
             when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "frontend/**" } }
             steps {
-                container('docker') { // Chuyển sang container docker
+                container('docker') {
                     script {
                         echo "Building Frontend Image: ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
                         withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
@@ -134,7 +132,7 @@ spec:
         stage('Deploy Frontend') {
             when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "frontend/**" } }
             steps {
-                container('kubectl') { // Chuyển sang container kubectl
+                container('kubectl') {
                     script {
                         echo "Deploying new Frontend image..."
                         sh "kubectl set image deployment/hms-frontend hms-frontend=${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
