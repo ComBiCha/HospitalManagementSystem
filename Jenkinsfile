@@ -1,3 +1,4 @@
+// Jenkinsfile - Phiên bản cuối cùng
 pipeline {
     agent {
         kubernetes {
@@ -6,7 +7,7 @@ pipeline {
             containerTemplate {
                 name 'jnlp'
                 image 'jenkins/inbound-agent:3345.v03dee9b_f88fc-1'
-                args '\$(JENKINS_SECRET) \$(JENKINS_NAME)'
+                args '$(JENKINS_SECRET) $(JENKINS_NAME)'
                 resources '1024m'
             }
             containerTemplate {
@@ -40,7 +41,6 @@ pipeline {
         stage('Checkout') {
             steps {
                 container('jnlp') {
-                    echo 'Checking out source code...'
                     checkout scm
                 }
             }
@@ -49,15 +49,13 @@ pipeline {
         stage('Setup Configuration') {
             steps {
                 container('kubectl') {
-                    echo 'Applying Kubernetes configurations...'
-                    sh "kubectl version --client"
-                    sh "kubectl delete configmap hms-api-config || true"
-
-                    // LỆNH CHẨN ĐOÁN MỚI: Liệt kê tất cả file
-                    echo "Listing files in workspace:"
-                    sh "ls -la"
-
-                    sh "kubectl create configmap hms-api-config --from-env-file=.env"
+                    // DÙNG withCredentials ĐỂ TRUY CẬP SECRET FILE
+                    withCredentials([file(credentialsId: 'hms-env-file', variable: 'ENV_FILE_PATH')]) {
+                        echo 'Applying Kubernetes configurations from secret file...'
+                        sh "kubectl delete configmap hms-api-config || true"
+                        // DÙNG BIẾN ENV_FILE_PATH MÀ JENKINS CUNG CẤP
+                        sh "kubectl create configmap hms-api-config --from-env-file=${ENV_FILE_PATH}"
+                    }
                 }
             }
         }
