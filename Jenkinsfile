@@ -1,96 +1,146 @@
 pipeline {
-    agent any
+    // Định nghĩa một agent chạy trên Kubernetes với các container công cụ cần thiết
+    agent {
+        kubernetes {
+            // Dùng file yaml để định nghĩa pod agent một cách chi tiết
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
+    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
+    resources:
+      requests:
+        cpu: "512m"
+        memory: "512Mi"
+      limits:
+        cpu: "1024m"
+        memory: "1024Mi"
+  - name: docker
+    image: docker:20.10.7
+    command: ['cat']
+    tty: true
+    privileged: true
+    volumeMounts:
+      - name: docker-sock
+        mountPath: /var/run/docker.sock
+    resources:
+      requests:
+        cpu: "512m"
+        memory: "512Mi"
+      limits:
+        cpu: "1024m"
+        memory: "1024Mi"
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command: ['cat']
+    tty: true
+    resources:
+      requests:
+        cpu: "512m"
+        memory: "512Mi"
+      limits:
+        cpu: "1024m"
+        memory: "1024Mi"
+  volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+"""
+        }
+    }
 
     environment {
-        DOCKER_REGISTRY = 'sangrk' // Thay bằng tên Docker Hub registry của bạn
+        DOCKER_REGISTRY = 'sangrk'
         BACKEND_IMAGE_NAME = "${env.DOCKER_REGISTRY}/hms-api"
         FRONTEND_IMAGE_NAME = "${env.DOCKER_REGISTRY}/hms-frontend"
-        // Dùng Build Number của Jenkins để tạo tag duy nhất cho mỗi lần build
         IMAGE_TAG = "build-${env.BUILD_NUMBER}"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // Lấy code từ GitHub
-                checkout scm
+                container('jnlp') { // Chạy trong container mặc định
+                    echo 'Checking out source code...'
+                    checkout scm
+                }
             }
         }
 
-        // --- STAGE CHO BACKEND ---
-        stage('Build & Push Backend') {
-            // Chỉ chạy stage này nếu có thay đổi trong folder backend
-            when {
-                changeset "HospitalManagementSystem.API/**"
-            }
+        stage('Setup Configuration') {
             steps {
-                script {
-                    echo "Building Backend Image: ${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG}"
-                    // Đăng nhập vào Docker Hub (sử dụng credentials đã lưu trong Jenkins)
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
-                    }
+                container('kubectl') { // Chuyển sang container kubectl
+                    echo 'Applying Kubernetes configurations...'
+                    sh "kubectl delete configmap hms-api-config || true"
+                    sh "kubectl create configmap hms-api-config --from-env-file=.env"
+                }
+            }
+        }
 
-                    // Build và push multi-platform image
-                    sh """
-                    docker buildx build --platform linux/amd64,linux/arm64 \\
-                        -t ${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG} \\
-                        -f HospitalManagementSystem.API/Dockerfile . --push
-                    """
+        stage('Build & Push Backend') {
+            // Chạy nếu là build đầu tiên HOẶC có thay đổi trong folder backend
+            when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "HospitalManagementSystem.API/**" } }
+            steps {
+                container('docker') { // Chuyển sang container docker
+                    script {
+                        echo "Building Backend Image: ${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
+                        }
+                        sh """
+                        docker buildx build --platform linux/amd64,linux/arm64 \\
+                            -t ${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG} \\
+                            -f HospitalManagementSystem.API/Dockerfile . --push
+                        """
+                    }
                 }
             }
         }
 
         stage('Deploy Backend') {
-            when {
-                changeset "HospitalManagementSystem.API/**"
-            }
+            when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "HospitalManagementSystem.API/**" } }
             steps {
-                script {
-                    echo "Deploying new Backend image..."
-                    // Dùng image mới để cập nhật deployment
-                    sh "kubectl set image deployment/hms-api hms-api=${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG}"
-                    // Khởi động lại deployment để áp dụng thay đổi
-                    sh "kubectl rollout restart deployment/hms-api"
-                    sh "kubectl rollout status deployment/hms-api"
+                container('kubectl') { // Chuyển sang container kubectl
+                    script {
+                        echo "Deploying new Backend image..."
+                        sh "kubectl set image deployment/hms-api hms-api=${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        sh "kubectl rollout restart deployment/hms-api"
+                        sh "kubectl rollout status deployment/hms-api"
+                    }
                 }
             }
         }
 
-        // --- STAGE CHO FRONTEND ---
         stage('Build & Push Frontend') {
-            // Chỉ chạy stage này nếu có thay đổi trong folder frontend
-            when {
-                changeset "frontend/**"
-            }
+            when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "frontend/**" } }
             steps {
-                script {
-                    echo "Building Frontend Image: ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
-                    // Đăng nhập Docker Hub
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-                        sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
-                    }
-
-                    // Build và push image (nên dùng buildx cho cả frontend)
-                    // Chạy build từ trong folder frontend
-                    dir('frontend') {
-                        sh "docker build -t ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG} ."
-                        sh "docker push ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                container('docker') { // Chuyển sang container docker
+                    script {
+                        echo "Building Frontend Image: ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                            sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
+                        }
+                        dir('frontend') {
+                            sh "docker build -t ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG} ."
+                            sh "docker push ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        }
                     }
                 }
             }
         }
 
         stage('Deploy Frontend') {
-            when {
-                changeset "frontend/**"
-            }
+            when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "frontend/**" } }
             steps {
-                script {
-                    echo "Deploying new Frontend image..."
-                    sh "kubectl set image deployment/hms-frontend hms-frontend=${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
-                    sh "kubectl rollout restart deployment/hms-frontend"
-                    sh "kubectl rollout status deployment/hms-frontend"
+                container('kubectl') { // Chuyển sang container kubectl
+                    script {
+                        echo "Deploying new Frontend image..."
+                        sh "kubectl set image deployment/hms-frontend hms-frontend=${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        sh "kubectl rollout restart deployment/hms-frontend"
+                        sh "kubectl rollout status deployment/hms-frontend"
+                    }
                 }
             }
         }
@@ -98,9 +148,10 @@ pipeline {
 
     post {
         always {
-            // Đăng xuất Docker Hub sau khi pipeline hoàn thành
-            echo 'Logging out from Docker Hub...'
-            sh 'docker logout'
+            container('docker') {
+                echo 'Logging out from Docker Hub...'
+                sh 'docker logout'
+            }
         }
     }
 }
