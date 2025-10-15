@@ -140,5 +140,27 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 .Where(s => s.DoctorId == doctorId)
                 .ToListAsync();
         }
+
+        public async Task<IEnumerable<DoctorShift>> GetShiftsByDoctorAndDayAsync(int doctorId, DayOfWeek dayOfWeek)
+        {
+            return await _context.DoctorShifts
+                .Where(s => s.DoctorId == doctorId && s.DayOfWeek == dayOfWeek && s.IsActive)
+                .ToListAsync();
+        }
+
+        public async Task<bool> HasAnyActiveShiftOnDateAsync(DateTime date)
+        {
+            var dayOfWeek = date.DayOfWeek;
+            return await _context.DoctorShifts.AnyAsync(s => s.DayOfWeek == dayOfWeek && s.IsActive);
+        }
+
+        public async Task<IEnumerable<DayOfWeek>> GetActiveShiftDaysAsync(int doctorId)
+        {
+            return await _context.DoctorShifts
+                .Where(s => s.DoctorId == doctorId && s.IsActive)
+                .Select(s => s.DayOfWeek)
+                .Distinct()
+                .ToListAsync();
+        }
     }
 }

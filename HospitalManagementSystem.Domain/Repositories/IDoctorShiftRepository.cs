@@ -14,5 +14,8 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<bool> IsDoctorWorkingAsync(int doctorId, DateTime date);
         Task<IEnumerable<Doctor>> GetAvailableDoctorsAsync(DateTime appointmentDate, string specialty);
         Task<List<DoctorShift>> GetDoctorShiftsAsync(int doctorId);
+        Task<IEnumerable<DoctorShift>> GetShiftsByDoctorAndDayAsync(int doctorId, DayOfWeek dayOfWeek);
+        Task<bool> HasAnyActiveShiftOnDateAsync(DateTime date);
+        Task<IEnumerable<DayOfWeek>> GetActiveShiftDaysAsync(int doctorId);
     }
 }

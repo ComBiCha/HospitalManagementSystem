@@ -32,6 +32,7 @@ using HospitalManagementSystem.Infrastructure.Configuration;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Hangfire.Dashboard;
+using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -96,6 +97,7 @@ builder.Services.AddScoped<IMedicalRecordRepository, MedicalRecordRepository>();
 builder.Services.AddScoped<IPrescriptionItemRepository, PrescriptionItemRepository>();
 builder.Services.AddScoped<IMedicalRecordHistoryRepository, MedicalRecordHistoryRepository>();
 builder.Services.AddScoped<MedicalRecordApplicationService>();
+builder.Services.AddScoped<AccountantApplicationService>();
 builder.Services.AddScoped<AppointmentApplicationService>();
 builder.Services.AddScoped<AppointmentExaminationService>();
 
@@ -195,6 +197,9 @@ builder.Services.AddHangfire(config => config
 
 builder.Services.AddHangfireServer();
 
+// Configure Stripe globally
+StripeConfiguration.ApiKey = builder.Configuration["Stripe:SecretKey"];
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -213,6 +218,12 @@ if (app.Environment.IsDevelopment())
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
 {
     Authorization = new[] { new AllowAllAuthorizationFilter() }
+});
+
+app.Use((context, next) =>
+{
+    context.Request.EnableBuffering();
+    return next();
 });
 
 app.UseCors("AllowAll");

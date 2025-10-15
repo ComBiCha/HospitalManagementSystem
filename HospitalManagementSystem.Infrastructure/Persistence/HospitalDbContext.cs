@@ -108,6 +108,11 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 // entity.HasIndex(e => e.gender);
             });
 
+            modelBuilder.Entity<DoctorShift>(entity =>
+            {
+                entity.HasIndex(e => new { e.DoctorId, e.DayOfWeek });
+            });
+
             modelBuilder.Entity<ImageInfo>(entity =>
             {
                 entity.HasKey(e => e.Id);
@@ -197,6 +202,7 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 entity.HasIndex(e => e.DoctorId);
                 entity.HasIndex(e => e.Date);
                 entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => new { e.DoctorId, e.Date });
             });
 
             modelBuilder.Entity<Payment>(entity =>
@@ -227,6 +233,7 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 entity.HasIndex(e => e.PatientId);
                 entity.HasIndex(e => e.TransactionId);
                 entity.HasIndex(e => e.Status);
+                entity.HasIndex(e => new { e.MedicalRecordId, e.Status });
             });
 
             modelBuilder.Entity<MedicalRecord>(entity =>

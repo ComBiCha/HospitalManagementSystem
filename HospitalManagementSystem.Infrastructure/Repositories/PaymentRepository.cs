@@ -55,6 +55,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 .ToListAsync();
         }
 
+        public async Task<Payment?> GetPendingPaymentByMedicalRecordIdAsync(int medicalRecordId)
+        {
+            return await _context.Payments
+                .FirstOrDefaultAsync(p => p.MedicalRecordId == medicalRecordId && p.Status == PaymentStatuses.Pending);
+        }
+
         public async Task<IEnumerable<Payment>> GetByStatusAsync(string status)
         {
             return await _context.Payments

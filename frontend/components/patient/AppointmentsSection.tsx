@@ -74,6 +74,7 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
   const [isLoading, setIsLoading] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
   
+  const [bookingFlow, setBookingFlow] = useState<'byDate' | 'byDoctor' | null>(null);
   const [step, setStep] = useState(1);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -83,6 +84,8 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [availableDoctors, setAvailableDoctors] = useState<AvailableDoctor[]>([]);
+  const [doctorsBySpecialty, setDoctorsBySpecialty] = useState<AvailableDoctor[]>([]);
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
 
   const [filters, setFilters] = useState<AppointmentFilter>({});
   const [currentPage, setCurrentPage] = useState(1);
@@ -176,6 +179,37 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
     }
   };
 
+  const fetchDoctorsBySpecialty = async (specialty: string) => {
+    try {
+      const response = await api.get(`/doctors?specialty=${specialty}`);
+      setDoctorsBySpecialty(response.data || []);
+    } catch (error) {
+      console.error('Error fetching doctors by specialty:', error);
+      toast.error('Không thể tải danh sách bác sĩ');
+    }
+  };
+
+  const fetchAvailableDates = async (doctorId: number) => {
+    try {
+      const response = await api.get(`/appointmentbooking/doctors/${doctorId}/available-dates`);
+      setAvailableDates(response.data || []);
+    } catch (error) {
+      console.error('Error fetching available dates:', error);
+      toast.error('Không thể tải ngày khám của bác sĩ');
+    }
+  };
+
+  const fetchDoctorAvailableSlots = async (doctorId: number, date: string) => {
+    try {
+      const dateOnly = date.split('T')[0]; // Ensure YYYY-MM-DD format
+      const response = await api.get(`/appointmentbooking/doctors/${doctorId}/available-slots?date=${dateOnly}`);
+      setTimeSlots(response.data || []);
+    } catch (error) {
+      console.error('Error fetching doctor available slots:', error);
+      toast.error('Không thể tải khung giờ của bác sĩ');
+    }
+  };
+
   const handleOpenBookingModal = () => {
     setShowBookingModal(true);
     setStep(1);
@@ -183,14 +217,27 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
   };
 
   const handleNextStep = async () => {
-    if (step === 1 && selectedDate) {
-      await fetchTimeSlots(selectedDate);
-      setStep(2);
-    } else if (step === 2 && selectedTime) {
-      setStep(3);
-    } else if (step === 3 && selectedSpecialty) {
-      await fetchAvailableDoctors();
-      setStep(4);
+    if (bookingFlow === 'byDate') {
+      if (step === 1 && selectedDate) {
+        await fetchTimeSlots(selectedDate);
+        setStep(2);
+      } else if (step === 2 && selectedTime) {
+        setStep(3);
+      } else if (step === 3 && selectedSpecialty) {
+        await fetchAvailableDoctors();
+        setStep(4);
+      }
+    } else if (bookingFlow === 'byDoctor') {
+      if (step === 1 && selectedSpecialty) {
+        await fetchDoctorsBySpecialty(selectedSpecialty);
+        setStep(2);
+      } else if (step === 2 && selectedDoctor) {
+        await fetchAvailableDates(selectedDoctor);
+        setStep(3);
+      } else if (step === 3 && selectedDate) {
+        await fetchDoctorAvailableSlots(selectedDoctor!, selectedDate);
+        setStep(4);
+      }
     }
   };
 
@@ -199,7 +246,8 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
     
     const appointmentsOnDate = pagedAppointments?.items.filter(apt => {
       const aptDate = new Date(apt.date).toISOString().split('T')[0];
-      return aptDate === selectedDate && 
+      const selectedDatePart = selectedDate.split('T')[0];
+      return aptDate === selectedDatePart && 
              apt.status !== 'Cancelled' && 
              apt.status !== 'ExpiredPayment';
     }) || [];
@@ -209,7 +257,14 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
       return;
     }
     
-    const requestedTime = new Date(`${selectedDate}T${selectedTime}:00`);
+    const datePart = selectedDate.split('T')[0];
+    const requestedTime = new Date(`${datePart}T${selectedTime}:00`);
+
+    if (isNaN(requestedTime.getTime())) {
+        toast.error('Ngày hoặc giờ không hợp lệ.');
+        return;
+    }
+
     for (const apt of appointmentsOnDate) {
       const existingTime = new Date(apt.date);
       const timeDiffMinutes = Math.abs((requestedTime.getTime() - existingTime.getTime()) / (1000 * 60));
@@ -222,8 +277,7 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
     
     setIsLoading(true);
     try {
-      const localDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
-      const appointmentDateTime = localDateTime.toISOString();
+      const appointmentDateTime = requestedTime.toISOString();
       
       const appointmentResponse = await api.post('/appointments', {
         patientId,
@@ -250,6 +304,7 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
   };
 
   const resetBookingFlow = () => {
+    setBookingFlow(null);
     setStep(1);
     setSelectedDate('');
     setSelectedTime('');
@@ -257,6 +312,8 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
     setSelectedDoctor(null);
     setTimeSlots([]);
     setAvailableDoctors([]);
+    setDoctorsBySpecialty([]);
+    setAvailableDates([]);
   };
 
   const formatDateTime = (dateString: string) => {
@@ -532,219 +589,397 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
             </div>
 
             <div className="p-6">
-              {/* Progress Steps */}
-              <div className="mb-8">
-                <div className="flex items-center justify-between mb-2">
-                  {['Ngày', 'Giờ', 'Chuyên khoa', 'Bác sĩ'].map((label, index) => {
-                    const stepNum = index + 1;
-                    return (
-                      <div key={stepNum} className="flex flex-col items-center flex-1">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
-                          step >= stepNum 
-                            ? 'bg-blue-600 text-white shadow-md scale-110' 
-                            : 'bg-gray-200 text-gray-600'
-                        }`}>
-                          {stepNum}
-                        </div>
-                        <span className={`text-xs mt-2 font-medium ${
-                          step >= stepNum ? 'text-blue-600' : 'text-gray-500'
-                        }`}>
-                          {label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="relative h-2 bg-gray-200 rounded-full mt-4">
-                  <div 
-                    className="absolute h-2 bg-blue-600 rounded-full transition-all duration-300"
-                    style={{ width: `${((step - 1) / 3) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Step 1: Select Date */}
-              {step === 1 && (
+              {!bookingFlow ? (
                 <div className="space-y-4">
-                  <div className="flex items-center space-x-2 mb-4">
-                    <Calendar className="w-5 h-5 text-blue-600" />
-                    <h4 className="font-semibold text-lg">Chọn ngày khám</h4>
-                  </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                    <p className="text-sm text-blue-800">
-                      <AlertCircle className="w-4 h-4 inline mr-2" />
-                      Lưu ý: Phải đặt lịch trước ít nhất 6 giờ. Tối đa 2 lịch/ngày, cách nhau ít nhất 1 giờ.
-                    </p>
-                  </div>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
-                  />
-                  <button
-                    onClick={handleNextStep}
-                    disabled={!selectedDate}
-                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-colors"
-                  >
-                    Tiếp theo →
-                  </button>
-                </div>
-              )}
-
-              {/* Step 2: Select Time */}
-              {step === 2 && (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 mb-4">
-                    <Clock className="w-5 h-5 text-blue-600" />
-                    <h4 className="font-semibold text-lg">Chọn giờ khám</h4>
-                  </div>
-                  {timeSlots.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <Clock className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                      <p>Không có khung giờ nào khả dụng</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto">
-                      {timeSlots.map((slot) => (
-                        <button
-                          key={slot.displayTime}
-                          onClick={() => setSelectedTime(slot.displayTime)}
-                          className={`px-4 py-3 border-2 rounded-lg font-medium transition-all ${
-                            selectedTime === slot.displayTime
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
-                              : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
-                          }`}>
-                          {slot.displayTime}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex space-x-3">
-                    <button onClick={() => setStep(1)} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
-                      ← Quay lại
+                  <h4 className="font-semibold text-lg text-center">Chọn phương thức đặt lịch</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button
+                      onClick={() => setBookingFlow('byDate')}
+                      className="p-6 border-2 rounded-lg flex flex-col items-center justify-center hover:bg-blue-50 hover:border-blue-500 transition-all"
+                    >
+                      <Calendar className="w-10 h-10 text-blue-600 mb-2" />
+                      <span className="font-semibold">Đặt lịch theo ngày</span>
                     </button>
                     <button
-                      onClick={handleNextStep}
-                      disabled={!selectedTime}
-                      className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold transition-colors"
+                      onClick={() => setBookingFlow('byDoctor')}
+                      className="p-6 border-2 rounded-lg flex flex-col items-center justify-center hover:bg-blue-50 hover:border-blue-500 transition-all"
                     >
-                      Tiếp theo →
+                      <User className="w-10 h-10 text-blue-600 mb-2" />
+                      <span className="font-semibold">Đặt lịch theo bác sĩ</span>
                     </button>
                   </div>
                 </div>
-              )}
-
-              {/* Step 3: Select Specialty */}
-              {step === 3 && (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 mb-4">
-                    <Stethoscope className="w-5 h-5 text-blue-600" />
-                    <h4 className="font-semibold text-lg">Chọn chuyên khoa</h4>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
-                    {specialties.map((specialty) => (
-                      <button
-                        key={specialty}
-                        onClick={() => setSelectedSpecialty(specialty)}
-                        className={`px-4 py-4 border-2 rounded-lg text-left font-medium transition-all ${
-                          selectedSpecialty === specialty
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
-                            : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
-                        }`}>
-                        <Stethoscope className={`w-4 h-4 inline mr-2 ${selectedSpecialty === specialty ? 'text-white' : 'text-blue-600'}`} />
-                        {specialty}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex space-x-3">
-                    <button onClick={() => setStep(2)} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
-                      ← Quay lại
-                    </button>
-                    <button
-                      onClick={handleNextStep}
-                      disabled={!selectedSpecialty}
-                      className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold transition-colors"
-                    >
-                      Tiếp theo →
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Step 4: Select Doctor */}
-              {step === 4 && (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 mb-4">
-                    <User className="w-5 h-5 text-blue-600" />
-                    <h4 className="font-semibold text-lg">Chọn bác sĩ</h4>
-                  </div>
-                  {availableDoctors.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <User className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                      <p>Không có bác sĩ available trong khung giờ này</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3 max-h-96 overflow-y-auto">
-                      {availableDoctors.map((doctor) => (
-                        <button
-                          key={doctor.id}
-                          onClick={() => setSelectedDoctor(doctor.id)}
-                          className={`w-full px-5 py-4 border-2 rounded-lg text-left transition-all ${
-                            selectedDoctor === doctor.id
-                              ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
-                              : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
-                          }`}>
-                          <div className="flex items-center">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${
-                              selectedDoctor === doctor.id ? 'bg-white text-blue-600' : 'bg-blue-100 text-blue-600'
+              ) : (
+                <>
+                  {/* Progress Steps */}
+                  <div className="mb-8">
+                    <div className="flex items-center justify-between mb-2">
+                      {(bookingFlow === 'byDate' ? ['Ngày', 'Giờ', 'Chuyên khoa', 'Bác sĩ'] : ['Chuyên khoa', 'Bác sĩ', 'Ngày', 'Giờ']).map((label, index) => {
+                        const stepNum = index + 1;
+                        return (
+                          <div key={stepNum} className="flex flex-col items-center flex-1">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold transition-all ${
+                              step >= stepNum 
+                                ? 'bg-blue-600 text-white shadow-md scale-110' 
+                                : 'bg-gray-200 text-gray-600'
                             }`}>
-                              <User className="w-5 h-5" />
+                              {stepNum}
                             </div>
-                            <div>
-                              <p className="font-semibold">{doctor.name}</p>
-                              <p className={`text-sm ${selectedDoctor === doctor.id ? 'text-blue-100' : 'text-gray-600'}`}>
-                                {doctor.specialty}
-                              </p>
-                            </div>
+                            <span className={`text-xs mt-2 font-medium ${
+                              step >= stepNum ? 'text-blue-600' : 'text-gray-500'
+                            }`}>
+                              {label}
+                            </span>
                           </div>
-                        </button>
-                      ))}
+                        );
+                      })}
                     </div>
-                  )}
-                  
-                  {/* Summary */}
-                  {selectedDoctor && (
-                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mt-4">
-                      <h5 className="font-semibold text-blue-900 mb-2">Thông tin đặt lịch:</h5>
-                      <div className="space-y-1 text-sm text-blue-800">
-                        <p>📅 Ngày: {selectedDate}</p>
-                        <p>🕐 Giờ: {selectedTime}</p>
-                        <p>🏥 Chuyên khoa: {selectedSpecialty}</p>
-                        <p>👨‍⚕️ Bác sĩ: {availableDoctors.find(d => d.id === selectedDoctor)?.name}</p>
-                      </div>
+                    <div className="relative h-2 bg-gray-200 rounded-full mt-4">
+                      <div 
+                        className="absolute h-2 bg-blue-600 rounded-full transition-all duration-300"
+                        style={{ width: `${((step - 1) / 3) * 100}%` }}
+                      />
                     </div>
-                  )}
-                  
-                  <div className="flex space-x-3 mt-4">
-                    <button onClick={() => setStep(3)} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
-                      ← Quay lại
-                    </button>
-                    <button
-                      onClick={handleBookAppointment}
-                      disabled={!selectedDoctor || isLoading}
-                      className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 font-semibold shadow-md transition-all"
-                    >
-                      {isLoading ? (
-                        <span className="flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                          Đang đặt...
-                        </span>
-                      ) : '✓ Xác nhận đặt lịch'}
-                    </button>
                   </div>
-                </div>
+
+                  {/* Flow: byDate */}
+                  {bookingFlow === 'byDate' && (
+                    <>
+                      {step === 1 && (
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-2 mb-4">
+                            <Calendar className="w-5 h-5 text-blue-600" />
+                            <h4 className="font-semibold text-lg">Chọn ngày khám</h4>
+                          </div>
+                          <input
+                            type="date"
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            min={new Date().toISOString().split('T')[0]}
+                            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                          />
+                          <button
+                            onClick={handleNextStep}
+                            disabled={!selectedDate}
+                            className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-colors"
+                          >
+                            Tiếp theo →
+                          </button>
+                        </div>
+                      )}
+                      {step === 2 && (
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-2 mb-4">
+                            <Clock className="w-5 h-5 text-blue-600" />
+                            <h4 className="font-semibold text-lg">Chọn giờ khám</h4>
+                          </div>
+                          {timeSlots.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">
+                              <Clock className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                              <p>Không có khung giờ nào khả dụng</p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+                              {timeSlots.map((slot) => (
+                                <button
+                                  key={slot.displayTime}
+                                  onClick={() => setSelectedTime(slot.displayTime)}
+                                  className={`px-4 py-3 border-2 rounded-lg font-medium transition-all ${
+                                    selectedTime === slot.displayTime
+                                      ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                                      : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+                                  }`}>
+                                  {slot.displayTime}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex space-x-3">
+                            <button onClick={() => setStep(1)} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
+                              ← Quay lại
+                            </button>
+                            <button
+                              onClick={handleNextStep}
+                              disabled={!selectedTime}
+                              className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold transition-colors"
+                            >
+                              Tiếp theo →
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {step === 3 && (
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-2 mb-4">
+                            <Stethoscope className="w-5 h-5 text-blue-600" />
+                            <h4 className="font-semibold text-lg">Chọn chuyên khoa</h4>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                            {specialties.map((specialty) => (
+                              <button
+                                key={specialty}
+                                onClick={() => setSelectedSpecialty(specialty)}
+                                className={`px-4 py-4 border-2 rounded-lg text-left font-medium transition-all ${
+                                  selectedSpecialty === specialty
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                                    : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+                                }`}>
+                                <Stethoscope className={`w-4 h-4 inline mr-2 ${selectedSpecialty === specialty ? 'text-white' : 'text-blue-600'}`} />
+                                {specialty}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex space-x-3">
+                            <button onClick={() => setStep(2)} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
+                              ← Quay lại
+                            </button>
+                            <button
+                              onClick={handleNextStep}
+                              disabled={!selectedSpecialty}
+                              className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold transition-colors"
+                            >
+                              Tiếp theo →
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {step === 4 && (
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-2 mb-4">
+                            <User className="w-5 h-5 text-blue-600" />
+                            <h4 className="font-semibold text-lg">Chọn bác sĩ</h4>
+                          </div>
+                          {availableDoctors.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">
+                              <User className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                              <p>Không có bác sĩ available trong khung giờ này</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                              {availableDoctors.map((doctor) => (
+                                <button
+                                  key={doctor.id}
+                                  onClick={() => setSelectedDoctor(doctor.id)}
+                                  className={`w-full px-5 py-4 border-2 rounded-lg text-left transition-all ${
+                                    selectedDoctor === doctor.id
+                                      ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                                      : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+                                  }`}>
+                                  <div className="flex items-center">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${
+                                      selectedDoctor === doctor.id ? 'bg-white text-blue-600' : 'bg-blue-100 text-blue-600'
+                                    }`}>
+                                      <User className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold">{doctor.name}</p>
+                                      <p className={`text-sm ${selectedDoctor === doctor.id ? 'text-blue-100' : 'text-gray-600'}`}>
+                                        {doctor.specialty}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {selectedDoctor && (
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mt-4">
+                              <h5 className="font-semibold text-blue-900 mb-2">Thông tin đặt lịch:</h5>
+                              <div className="space-y-1 text-sm text-blue-800">
+                                <p>📅 Ngày: {selectedDate}</p>
+                                <p>🕐 Giờ: {selectedTime}</p>
+                                <p>🏥 Chuyên khoa: {selectedSpecialty}</p>
+                                <p>👨‍⚕️ Bác sĩ: {availableDoctors.find(d => d.id === selectedDoctor)?.name}</p>
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="flex space-x-3 mt-4">
+                            <button onClick={() => setStep(3)} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
+                              ← Quay lại
+                            </button>
+                            <button
+                              onClick={handleBookAppointment}
+                              disabled={!selectedDoctor || isLoading}
+                              className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 font-semibold shadow-md transition-all"
+                            >
+                              {isLoading ? (
+                                <span className="flex items-center justify-center">
+                                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                  Đang đặt...
+                                </span>
+                              ) : '✓ Xác nhận đặt lịch'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Flow: byDoctor */}
+                  {bookingFlow === 'byDoctor' && (
+                    <>
+                      {step === 1 && (
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-2 mb-4">
+                            <Stethoscope className="w-5 h-5 text-blue-600" />
+                            <h4 className="font-semibold text-lg">Chọn chuyên khoa</h4>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                            {specialties.map((specialty) => (
+                              <button
+                                key={specialty}
+                                onClick={() => setSelectedSpecialty(specialty)}
+                                className={`px-4 py-4 border-2 rounded-lg text-left font-medium transition-all ${
+                                  selectedSpecialty === specialty
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                                    : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+                                }`}>
+                                <Stethoscope className={`w-4 h-4 inline mr-2 ${selectedSpecialty === specialty ? 'text-white' : 'text-blue-600'}`} />
+                                {specialty}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={handleNextStep}
+                            disabled={!selectedSpecialty}
+                            className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold transition-colors"
+                          >
+                            Tiếp theo →
+                          </button>
+                        </div>
+                      )}
+                      {step === 2 && (
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-2 mb-4">
+                            <User className="w-5 h-5 text-blue-600" />
+                            <h4 className="font-semibold text-lg">Chọn bác sĩ</h4>
+                          </div>
+                          <div className="space-y-3 max-h-96 overflow-y-auto">
+                            {doctorsBySpecialty.map((doctor) => (
+                              <button
+                                key={doctor.id}
+                                onClick={() => setSelectedDoctor(doctor.id)}
+                                className={`w-full px-5 py-4 border-2 rounded-lg text-left transition-all ${
+                                  selectedDoctor === doctor.id
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                                    : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+                                }`}>
+                                <p className="font-semibold">{doctor.name}</p>
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex space-x-3">
+                            <button onClick={() => setStep(1)} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
+                              ← Quay lại
+                            </button>
+                            <button
+                              onClick={handleNextStep}
+                              disabled={!selectedDoctor}
+                              className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold transition-colors"
+                            >
+                              Tiếp theo →
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {step === 3 && (
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-2 mb-4">
+                            <Calendar className="w-5 h-5 text-blue-600" />
+                            <h4 className="font-semibold text-lg">Chọn ngày khám</h4>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+                            {availableDates.map((date) => (
+                              <button
+                                key={date}
+                                onClick={() => setSelectedDate(date)}
+                                className={`px-4 py-3 border-2 rounded-lg font-medium transition-all ${
+                                  selectedDate === date
+                                    ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                                    : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+                                }`}>
+                                {new Date(date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex space-x-3">
+                            <button onClick={() => setStep(2)} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
+                              ← Quay lại
+                            </button>
+                            <button
+                              onClick={handleNextStep}
+                              disabled={!selectedDate}
+                              className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-semibold transition-colors"
+                            >
+                              Tiếp theo →
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {step === 4 && (
+                        <div className="space-y-4">
+                          <div className="flex items-center space-x-2 mb-4">
+                            <Clock className="w-5 h-5 text-blue-600" />
+                            <h4 className="font-semibold text-lg">Chọn giờ khám</h4>
+                          </div>
+                          {timeSlots.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">
+                              <Clock className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                              <p>Không có khung giờ nào khả dụng</p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+                              {timeSlots.map((slot) => (
+                                <button
+                                  key={slot.displayTime}
+                                  onClick={() => setSelectedTime(slot.displayTime)}
+                                  className={`px-4 py-3 border-2 rounded-lg font-medium transition-all ${
+                                    selectedTime === slot.displayTime
+                                      ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                                      : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+                                  }`}>
+                                  {slot.displayTime}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {selectedTime && (
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mt-4">
+                              <h5 className="font-semibold text-blue-900 mb-2">Thông tin đặt lịch:</h5>
+                              <div className="space-y-1 text-sm text-blue-800">
+                                <p>🏥 Chuyên khoa: {selectedSpecialty}</p>
+                                <p>👨‍⚕️ Bác sĩ: {doctorsBySpecialty.find(d => d.id === selectedDoctor)?.name}</p>
+                                <p>📅 Ngày: {selectedDate}</p>
+                                <p>🕐 Giờ: {selectedTime}</p>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex space-x-3 mt-4">
+                            <button onClick={() => setStep(3)} className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 font-semibold transition-colors">
+                              ← Quay lại
+                            </button>
+                            <button
+                              onClick={handleBookAppointment}
+                              disabled={!selectedTime || isLoading}
+                              className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 font-semibold shadow-md transition-all"
+                            >
+                              {isLoading ? (
+                                <span className="flex items-center justify-center">
+                                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                  Đang đặt...
+                                </span>
+                              ) : '✓ Xác nhận đặt lịch'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </div>
           </div>

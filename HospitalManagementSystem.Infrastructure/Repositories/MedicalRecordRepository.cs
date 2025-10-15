@@ -113,5 +113,18 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 .OrderByDescending(m => m.CreatedAt)
                 .ToListAsync();
         }
+
+        public async Task<IEnumerable<MedicalRecord>> GetUnpaidMedicalRecordsAsync(int page, int pageSize)
+        {
+            return await _context.MedicalRecords
+                .Include(m => m.Patient)
+                .Include(m => m.Doctor)
+                .Include(m => m.Appointment)
+                .Where(m => m.PaymentStatus == "Unpaid" && m.Appointment.Status == "Completed")
+                .OrderByDescending(m => m.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+        }
     }
 }

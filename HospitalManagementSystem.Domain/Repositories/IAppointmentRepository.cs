@@ -8,6 +8,9 @@ namespace HospitalManagementSystem.Domain.Repositories
     {
         Task<Appointment?> GetByIdAsync(int id);
         Task<IEnumerable<Appointment>> GetByPatientIdAsync(int patientId);
+        Task<IEnumerable<Appointment>> GetByDoctorIdAndDateAsync(int doctorId, DateTime date);
+        Task<IEnumerable<Appointment>> GetAppointmentsWithPaymentsForCleanupAsync(DateTime cleanupTime);
+        Task<Appointment> GetByIdWithIncludesAsync(int id);
         Task<IEnumerable<Appointment>> GetByDoctorIdAsync(int doctorId);
         Task<Appointment> CreateAsync(Appointment appointment);
         Task<Appointment?> UpdateAsync(Appointment appointment);

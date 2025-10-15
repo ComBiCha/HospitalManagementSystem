@@ -215,3 +215,18 @@ export interface MedicalRecord {
   paymentStatus: string;
   appointmentStatus: string;
 }
+
+export interface UnpaidMedicalRecordDto {
+  medicalRecordId: number;
+  appointmentId: number;
+  appointmentDate: string;
+  patientName: string;
+  patientId: number;
+  doctorName: string;
+  totalFee: number;
+  paidAmount: number;
+  remainingAmount: number;
+  paymentStatus: string;
+  pendingPaymentId?: number | null;
+  pendingPaymentMethod?: string | null;
+}

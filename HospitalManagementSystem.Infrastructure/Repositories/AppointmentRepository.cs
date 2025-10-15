@@ -4,6 +4,7 @@ using HospitalManagementSystem.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using HospitalManagementSystem.Domain.Specifications;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace HospitalManagementSystem.Infrastructure.Repositories
 {
@@ -23,9 +24,57 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             return await _context.Appointments.FindAsync(id);
         }
 
-        public async Task<IEnumerable<Appointment>> GetByPatientIdAsync(int patientId)
+                public async Task<IEnumerable<Appointment>> GetByPatientIdAsync(int patientId)
+
+                {
+
+                    return await _context.Appointments
+
+                        .Where(a => a.PatientId == patientId)
+
+                        .ToListAsync();
+
+                }
+
+        
+
+                public async Task<IEnumerable<Appointment>> GetByDoctorIdAndDateAsync(int doctorId, DateTime date)
+
+                {
+
+                    var utcDate = DateTime.SpecifyKind(date, DateTimeKind.Utc);
+
+                    return await _context.Appointments
+
+                        .Where(a => a.DoctorId == doctorId && a.Date.Date == utcDate.Date)
+
+                        .ToListAsync();
+
+                }
+
+        
+
+                public async Task<Appointment> GetByIdWithIncludesAsync(int id)
+
+                {
+
+                    return await _context.Appointments
+
+                        .Include(a => a.Patient)
+
+                        .Include(a => a.Doctor)
+
+                        .FirstOrDefaultAsync(a => a.Id == id);
+
+                }
+
+        
+
+        public async Task<IEnumerable<Appointment>> GetAppointmentsWithPaymentsForCleanupAsync(DateTime cleanupTime)
         {
-            return await _context.Appointments.Where(a => a.PatientId == patientId).ToListAsync();
+            return await _context.Appointments
+                .Where(a => a.Status == "PendingPayment" && a.PaymentExpiresAt != null && a.PaymentExpiresAt < cleanupTime)
+                .ToListAsync();
         }
 
         public async Task<IEnumerable<Appointment>> GetByDoctorIdAsync(int doctorId)

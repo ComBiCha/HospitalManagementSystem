@@ -13,5 +13,6 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<MedicalRecord?> UpdateAsync(MedicalRecord medicalRecord);
         Task<bool> DeleteAsync(int id);
         Task<IEnumerable<MedicalRecord>> GetAllAsync();
+        Task<IEnumerable<MedicalRecord>> GetUnpaidMedicalRecordsAsync(int page, int pageSize);
     }
 }

@@ -56,6 +56,8 @@ export default function AuthModal({ isOpen, onClose, defaultMode = 'login' }: Au
         router.push('/doctor/portal')
       } else if (userRole === 'Admin') {
         router.push('/admin/dashboard')
+      } else if (userRole === 'Accountant') {
+        router.push('/accountant')
       } else {
         router.push('/profile')
       }

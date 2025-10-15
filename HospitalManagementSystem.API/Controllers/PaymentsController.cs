@@ -18,6 +18,7 @@ namespace HospitalManagementSystem.API.Controllers
     {
         private readonly IPaymentRepository _paymentRepository;
         private readonly IAppointmentRepository _appointmentRepository;
+        private readonly IMedicalRecordRepository _medicalRecordRepository; // Injected
         private readonly IPatientRepository _patientRepository;
         private readonly IRabbitMQService _rabbitMQService;
         private readonly IConfiguration _configuration;
@@ -26,6 +27,7 @@ namespace HospitalManagementSystem.API.Controllers
         public PaymentsController(
             IPaymentRepository paymentRepository,
             IAppointmentRepository appointmentRepository,
+            IMedicalRecordRepository medicalRecordRepository, // Injected
             IPatientRepository patientRepository,
             IRabbitMQService rabbitMQService,
             IConfiguration configuration,
@@ -33,12 +35,23 @@ namespace HospitalManagementSystem.API.Controllers
         {
             _paymentRepository = paymentRepository;
             _appointmentRepository = appointmentRepository;
+            _medicalRecordRepository = medicalRecordRepository; // Injected
             _patientRepository = patientRepository;
             _rabbitMQService = rabbitMQService;
             _configuration = configuration;
             _logger = logger;
-            
-            StripeConfiguration.ApiKey = configuration["Stripe:SecretKey"];
+        }
+
+        [HttpGet("{paymentId}/status")]
+        [Authorize(Roles = "Admin,Accountant")]
+        public async Task<ActionResult<string>> GetPaymentStatus(int paymentId)
+        {
+            var payment = await _paymentRepository.GetByIdAsync(paymentId);
+            if (payment == null)
+            {
+                return NotFound("Payment not found");
+            }
+            return Ok(payment.Status);
         }
 
         [HttpPost("booking-fee")]
@@ -181,7 +194,7 @@ namespace HospitalManagementSystem.API.Controllers
                     },
                     Mode = "payment",
                     ExpiresAt = DateTime.UtcNow.AddMinutes(30),
-                    SuccessUrl = $"{baseUrl}/api/payments/success?session_id={{CHECKOUT_SESSION_ID}}&payment_id={createdPayment.Id}",
+                    SuccessUrl = $"{baseUrl}/api/payments/success?payment_id={createdPayment.Id}",
                     CancelUrl = $"{baseUrl}/api/payments/cancel?payment_id={createdPayment.Id}",
                     CustomerEmail = patient.Email,
                     Metadata = new Dictionary<string, string>
@@ -225,88 +238,21 @@ namespace HospitalManagementSystem.API.Controllers
 
         [HttpGet("success")]
         [AllowAnonymous]
-        public async Task<IActionResult> PaymentSuccess([FromQuery] string session_id, [FromQuery] int payment_id)
+        public async Task<IActionResult> PaymentSuccess([FromQuery] int payment_id)
         {
-            try
-            {
-                _logger.LogInformation("Payment success callback: SessionId={SessionId}, PaymentId={PaymentId}",
-                    session_id, payment_id);
+            _logger.LogInformation("Redirecting from successful payment: PaymentId={PaymentId}", payment_id);
+            var payment = await _paymentRepository.GetByIdAsync(payment_id);
+            var appointmentId = payment?.AppointmentId ?? 0;
 
-                // Get Stripe session
-                var sessionService = new SessionService();
-                var session = await sessionService.GetAsync(session_id);
-
-                // Get payment record
-                var payment = await _paymentRepository.GetByIdAsync(payment_id);
-                if (payment == null)
-                {
-                    return NotFound("Payment not found");
-                }
-
-                // Get appointment
-                var appointment = await _appointmentRepository.GetByIdAsync(payment.AppointmentId ?? 0);
-                if (appointment == null)
-                {
-                    return NotFound("Appointment not found");
-                }
-
-                if (payment.Status == PaymentStatuses.Pending && session.PaymentStatus == "paid")
-                {
-                    // Update payment
-                    payment.Status = PaymentStatuses.Completed;
-                    payment.TransactionId = session.PaymentIntentId ?? session.Id;
-                    payment.StripePaymentIntentId = session.PaymentIntentId;
-                    payment.PaidAt = DateTime.UtcNow;
-                    await _paymentRepository.UpdateAsync(payment);
-
-                    // Update appointment
-                    appointment.Status = "Scheduled";
-                    appointment.BookingPaymentId = payment.Id;
-                    appointment.PaymentExpiresAt = null; 
-                    appointment.UpdatedAt = DateTime.UtcNow;
-                    await _appointmentRepository.UpdateAsync(appointment);
-
-                    _logger.LogInformation("Payment {PaymentId} completed, Appointment {AppointmentId} status updated to Scheduled",
-                        payment.Id, appointment.Id);
-
-                    await _rabbitMQService.PublishPaymentProcessedAsync(new PaymentProcessedEvent
-                    {
-                        BillingId = payment.Id,
-                        AppointmentId = appointment.Id,
-                        PatientId = payment.PatientId,
-                        Amount = payment.Amount,
-                        PaymentMethod = payment.PaymentMethod,
-                        TransactionId = payment.TransactionId,
-                        ProcessedAt = DateTime.UtcNow,
-                        ProcessedByUserId = payment.PatientId,
-                        ProcessedByRole = "Patient",
-                        PaymentSource = "Stripe",
-                        SessionId = session.Id
-                    });
-                }
-                else if (payment.Status == PaymentStatuses.Completed)
-                {
-                    _logger.LogInformation("Payment {PaymentId} already completed (likely by webhook), skipping duplicate processing", payment.Id);
-                }
-
-                
-                var frontendUrl = _configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000";
-                return Redirect($"{frontendUrl}/patient/portal?payment=success&appointment={appointment.Id}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing payment success");
-                var frontendUrl = _configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000";
-                return Redirect($"{frontendUrl}/patient/portal?payment=error");
-            }
+            var frontendUrl = _configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000";
+            return Redirect($"{frontendUrl}/patient/portal?payment=success&appointment={appointmentId}");
         }
 
         [HttpGet("cancel")]
         [AllowAnonymous]
         public IActionResult PaymentCancel([FromQuery] int payment_id)
         {
-            _logger.LogInformation("Payment cancelled: PaymentId={PaymentId}", payment_id);
-            
+            _logger.LogInformation("Redirecting from cancelled payment: PaymentId={PaymentId}", payment_id);
             var frontendUrl = _configuration["AppSettings:FrontendUrl"] ?? "http://localhost:3000";
             return Redirect($"{frontendUrl}/patient/portal?payment=cancelled");
         }
@@ -321,7 +267,8 @@ namespace HospitalManagementSystem.API.Controllers
                 var stripeEvent = EventUtility.ConstructEvent(
                     json,
                     Request.Headers["Stripe-Signature"],
-                    _configuration["Stripe:WebhookSecret"]
+                    _configuration["Stripe:WebhookSecret"],
+                    throwOnApiVersionMismatch: false
                 );
 
                 _logger.LogInformation("Stripe webhook received: {EventType}", stripeEvent.Type);
@@ -331,6 +278,11 @@ namespace HospitalManagementSystem.API.Controllers
                     case Events.CheckoutSessionCompleted:
                         var session = stripeEvent.Data.Object as Session;
                         await HandleCheckoutSessionCompleted(session);
+                        break;
+
+                    case Events.CheckoutSessionExpired:
+                        var expiredSession = stripeEvent.Data.Object as Session;
+                        await HandleCheckoutSessionExpired(expiredSession);
                         break;
 
                     case Events.PaymentIntentSucceeded:
@@ -363,8 +315,9 @@ namespace HospitalManagementSystem.API.Controllers
                 payment.PaidAt = DateTime.UtcNow;
                 await _paymentRepository.UpdateAsync(payment);
 
-                // Update appointment
-                if (payment.AppointmentId.HasValue)
+                var paymentType = session.Metadata.ContainsKey("payment_type") ? session.Metadata["payment_type"] : null;
+
+                if (paymentType == PaymentTypes.BookingFee && payment.AppointmentId.HasValue)
                 {
                     var appointment = await _appointmentRepository.GetByIdAsync(payment.AppointmentId.Value);
                     if (appointment != null)
@@ -373,6 +326,16 @@ namespace HospitalManagementSystem.API.Controllers
                         appointment.BookingPaymentId = payment.Id;
                         appointment.PaymentExpiresAt = null;
                         await _appointmentRepository.UpdateAsync(appointment);
+                    }
+                }
+                else if (paymentType == PaymentTypes.FinalPayment && payment.MedicalRecordId.HasValue)
+                {
+                    var medicalRecord = await _medicalRecordRepository.GetByIdAsync(payment.MedicalRecordId.Value);
+                    if (medicalRecord != null)
+                    {
+                        medicalRecord.PaymentStatus = "Paid";
+                        medicalRecord.PaidAmount += payment.Amount;
+                        await _medicalRecordRepository.UpdateAsync(medicalRecord);
                     }
                 }
 
@@ -392,6 +355,23 @@ namespace HospitalManagementSystem.API.Controllers
                 });
 
                 _logger.LogInformation("Webhook: Payment {PaymentId} completed", paymentId);
+            }
+        }
+
+        private async Task HandleCheckoutSessionExpired(Session? session)
+        {
+            if (session?.Metadata?.ContainsKey("payment_id") != true) return;
+
+            var paymentId = int.Parse(session.Metadata["payment_id"]);
+            var payment = await _paymentRepository.GetByIdAsync(paymentId);
+
+            if (payment != null && payment.Status == PaymentStatuses.Pending)
+            {
+                payment.Status = PaymentStatuses.Failed;
+                payment.FailureReason = "Stripe checkout session expired";
+                await _paymentRepository.UpdateAsync(payment);
+
+                _logger.LogWarning("Webhook: Payment {PaymentId} failed due to expired session", paymentId);
             }
         }
 

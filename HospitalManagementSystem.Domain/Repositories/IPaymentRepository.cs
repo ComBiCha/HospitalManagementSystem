@@ -9,6 +9,7 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<Payment?> GetByAppointmentIdAsync(int appointmentId);
         Task<IEnumerable<Payment>> GetByPatientIdAsync(int patientId);
         Task<IEnumerable<Payment>> GetByMedicalRecordIdAsync(int medicalRecordId);
+        Task<Payment?> GetPendingPaymentByMedicalRecordIdAsync(int medicalRecordId);
         Task<IEnumerable<Payment>> GetByStatusAsync(string status);
         Task<Payment> CreateAsync(Payment payment);
         Task<Payment?> UpdateAsync(Payment payment);
