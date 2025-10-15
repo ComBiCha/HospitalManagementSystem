@@ -1,5 +1,4 @@
 pipeline {
-    // SỬ DỤNG CÚ PHÁP KHAI BÁO AGENT MỚI, ỔN ĐỊNH HƠN
     agent {
         kubernetes {
             cloud 'kubernetes'
@@ -23,7 +22,7 @@ pipeline {
             }
             containerTemplate {
                 name 'kubectl'
-                image 'lachlanevenson/k8s-kubectl:v1.23.3' // Dùng một image kubectl khác đáng tin cậy hơn
+                image 'lachlanevenson/k8s-kubectl:v1.23.3'
                 command 'cat'
                 ttyEnabled true
             }
@@ -53,11 +52,17 @@ pipeline {
                     echo 'Applying Kubernetes configurations...'
                     sh "kubectl version --client"
                     sh "kubectl delete configmap hms-api-config || true"
+
+                    // LỆNH CHẨN ĐOÁN MỚI: Liệt kê tất cả file
+                    echo "Listing files in workspace:"
+                    sh "ls -la"
+
                     sh "kubectl create configmap hms-api-config --from-env-file=.env"
                 }
             }
         }
 
+        // ... các stage còn lại giữ nguyên ...
         stage('Build & Push Backend') {
             when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "HospitalManagementSystem.API/**" } }
             steps {
@@ -120,15 +125,6 @@ pipeline {
                         sh "kubectl rollout status deployment/hms-frontend"
                     }
                 }
-            }
-        }
-    }
-
-    post {
-        always {
-            container('docker') {
-                echo 'Logging out from Docker Hub...'
-                sh 'docker logout'
             }
         }
     }
