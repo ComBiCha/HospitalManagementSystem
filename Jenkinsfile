@@ -1,44 +1,32 @@
 pipeline {
+    // SỬ DỤNG CÚ PHÁP KHAI BÁO AGENT MỚI, ỔN ĐỊNH HƠN
     agent {
         kubernetes {
-            yaml """
-apiVersion: v1
-kind: Pod
-spec:
-  serviceAccountName: 'jenkins'
-  containers:
-  - name: jnlp
-    image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
-    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
-    resources:
-      requests:
-        cpu: "512m"
-        memory: "512Mi"
-  - name: docker
-    image: docker:20.10.7
-    command: ['cat']
-    tty: true
-    privileged: true
-    volumeMounts:
-      - name: docker-sock
-        mountPath: /var/run/docker.sock
-    resources:
-      requests:
-        cpu: "512m"
-        memory: "512Mi"
-  - name: kubectl
-    image: bitnami/kubectl:latest
-    command: ['cat']
-    tty: true
-    resources:
-      requests:
-        cpu: "512m"
-        memory: "512Mi"
-  volumes:
-    - name: docker-sock
-      hostPath:
-        path: /var/run/docker.sock
-"""
+            cloud 'kubernetes'
+            serviceAccount 'jenkins'
+            containerTemplate {
+                name 'jnlp'
+                image 'jenkins/inbound-agent:3345.v03dee9b_f88fc-1'
+                args '\$(JENKINS_SECRET) \$(JENKINS_NAME)'
+                resources '1024m'
+            }
+            containerTemplate {
+                name 'docker'
+                image 'docker:20.10.7'
+                command 'cat'
+                ttyEnabled true
+                privileged true
+                volumeMounts {
+                    mountPath '/var/run/docker.sock'
+                    hostPath '/var/run/docker.sock'
+                }
+            }
+            containerTemplate {
+                name 'kubectl'
+                image 'lachlanevenson/k8s-kubectl:v1.23.3' // Dùng một image kubectl khác đáng tin cậy hơn
+                command 'cat'
+                ttyEnabled true
+            }
         }
     }
 
@@ -63,28 +51,13 @@ spec:
             steps {
                 container('kubectl') {
                     echo 'Applying Kubernetes configurations...'
-                    // LỆNH CHẨN ĐOÁN MỚI
                     sh "kubectl version --client"
-                    // Kiểm tra kết nối đến cluster
-                    sh "kubectl cluster-info"
-
-                    // Kiểm tra namespace hiện tại
-                    sh "kubectl config view --minify | grep namespace:"
-
-                    // Kiểm tra quyền của ServiceAccount
-                    sh "kubectl auth can-i create configmaps"
-                    sh "kubectl auth can-i update deployments"
-
-                    // List các resources hiện có
-                    sh "kubectl get deployments"
-                    sh "kubectl get configmaps"
-
                     sh "kubectl delete configmap hms-api-config || true"
                     sh "kubectl create configmap hms-api-config --from-env-file=.env"
                 }
             }
         }
-        // ... các stage còn lại giữ nguyên ...
+
         stage('Build & Push Backend') {
             when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "HospitalManagementSystem.API/**" } }
             steps {
