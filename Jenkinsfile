@@ -14,9 +14,6 @@ spec:
       requests:
         cpu: "512m"
         memory: "512Mi"
-      limits:
-        cpu: "1024m"
-        memory: "1024Mi"
   - name: docker
     image: docker:20.10.7
     command: ['cat']
@@ -29,9 +26,6 @@ spec:
       requests:
         cpu: "512m"
         memory: "512Mi"
-      limits:
-        cpu: "1024m"
-        memory: "1024Mi"
   - name: kubectl
     image: bitnami/kubectl:latest
     command: ['cat']
@@ -40,9 +34,6 @@ spec:
       requests:
         cpu: "512m"
         memory: "512Mi"
-      limits:
-        cpu: "1024m"
-        memory: "1024Mi"
   volumes:
     - name: docker-sock
       hostPath:
@@ -72,12 +63,28 @@ spec:
             steps {
                 container('kubectl') {
                     echo 'Applying Kubernetes configurations...'
+                    // LỆNH CHẨN ĐOÁN MỚI
+                    sh "kubectl version --client"
+                    // Kiểm tra kết nối đến cluster
+                    sh "kubectl cluster-info"
+
+                    // Kiểm tra namespace hiện tại
+                    sh "kubectl config view --minify | grep namespace:"
+
+                    // Kiểm tra quyền của ServiceAccount
+                    sh "kubectl auth can-i create configmaps"
+                    sh "kubectl auth can-i update deployments"
+
+                    // List các resources hiện có
+                    sh "kubectl get deployments"
+                    sh "kubectl get configmaps"
+
                     sh "kubectl delete configmap hms-api-config || true"
                     sh "kubectl create configmap hms-api-config --from-env-file=.env"
                 }
             }
         }
-
+        // ... các stage còn lại giữ nguyên ...
         stage('Build & Push Backend') {
             when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "HospitalManagementSystem.API/**" } }
             steps {
