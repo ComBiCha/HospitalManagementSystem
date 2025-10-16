@@ -89,7 +89,8 @@ spec:
         DOCKER_REGISTRY = 'sangrk'
         BACKEND_IMAGE_NAME = "${env.DOCKER_REGISTRY}/hms-api"
         FRONTEND_IMAGE_NAME = "${env.DOCKER_REGISTRY}/hms-frontend"
-        IMAGE_TAG = "build-${env.BUILD_NUMBER}"
+        BACKEND_TAG = "v20"           
+        FRONTEND_TAG = "latest"       
         DOCKER_HOST = "tcp://localhost:2375"
         DOCKER_BUILDKIT = "1"
     }
@@ -131,20 +132,15 @@ spec:
                     script {
                         echo '🔧 Setting up Docker Buildx...'
                         sh '''
-                        # Remove old builder if exists
                         docker buildx rm mybuilder || true
                         
-                        # Create new builder with proper config
                         docker buildx create \\
                             --name mybuilder \\
                             --driver docker-container \\
                             --driver-opt network=host \\
                             --use
                         
-                        # Bootstrap the builder
                         docker buildx inspect --bootstrap
-                        
-                        # Verify
                         docker buildx ls
                         '''
                     }
@@ -178,7 +174,7 @@ spec:
             steps {
                 container('docker') {
                     script {
-                        echo "🏗️ Building Backend for linux/amd64: ${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        echo "🏗️ Building Backend: ${env.BACKEND_IMAGE_NAME}:${env.BACKEND_TAG}"
                         
                         withCredentials([usernamePassword(
                             credentialsId: 'dockerhub-credentials',
@@ -191,8 +187,7 @@ spec:
                         sh """
                         docker buildx build \\
                             --platform linux/amd64 \\
-                            --tag ${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG} \\
-                            --tag ${env.BACKEND_IMAGE_NAME}:latest \\
+                            --tag ${env.BACKEND_IMAGE_NAME}:${env.BACKEND_TAG} \\
                             --file HospitalManagementSystem.API/Dockerfile \\
                             --progress=plain \\
                             --pull \\
@@ -202,7 +197,7 @@ spec:
                             .
                         """
                         
-                        echo '✅ Backend image built and pushed!'
+                        echo "✅ Backend image pushed: ${env.BACKEND_IMAGE_NAME}:${env.BACKEND_TAG}"
                     }
                 }
             }
@@ -218,11 +213,9 @@ spec:
             steps {
                 container('kubectl') {
                     script {
-                        echo "🚀 Deploying Backend..."
+                        echo "🚀 Deploying Backend with tag ${env.BACKEND_TAG}..."
                         sh """
-                        kubectl set image deployment/hms-api \\
-                            hms-api=${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG} \\
-                            -n default
+                        kubectl rollout restart deployment/hms-api -n default
                         kubectl rollout status deployment/hms-api -n default --timeout=10m
                         """
                         echo '✅ Backend deployed successfully!'
@@ -241,7 +234,7 @@ spec:
             steps {
                 container('docker') {
                     script {
-                        echo "🏗️ Building Frontend for linux/amd64: ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        echo "🏗️ Building Frontend: ${env.FRONTEND_IMAGE_NAME}:${env.FRONTEND_TAG}"
                         
                         withCredentials([usernamePassword(
                             credentialsId: 'dockerhub-credentials',
@@ -255,8 +248,7 @@ spec:
                             sh """
                             docker buildx build \\
                                 --platform linux/amd64 \\
-                                --tag ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG} \\
-                                --tag ${env.FRONTEND_IMAGE_NAME}:latest \\
+                                --tag ${env.FRONTEND_IMAGE_NAME}:${env.FRONTEND_TAG} \\
                                 --progress=plain \\
                                 --pull \\
                                 --push \\
@@ -266,7 +258,7 @@ spec:
                             """
                         }
                         
-                        echo '✅ Frontend image built and pushed!'
+                        echo "✅ Frontend image pushed: ${env.FRONTEND_IMAGE_NAME}:${env.FRONTEND_TAG}"
                     }
                 }
             }
@@ -282,11 +274,9 @@ spec:
             steps {
                 container('kubectl') {
                     script {
-                        echo "🚀 Deploying Frontend..."
+                        echo "🚀 Deploying Frontend with tag ${env.FRONTEND_TAG}..."
                         sh """
-                        kubectl set image deployment/hms-frontend \\
-                            hms-frontend=${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG} \\
-                            -n default
+                        kubectl rollout restart deployment/hms-frontend -n default
                         kubectl rollout status deployment/hms-frontend -n default --timeout=10m
                         """
                         echo '✅ Frontend deployed successfully!'
@@ -301,13 +291,8 @@ spec:
                     script {
                         echo '🧹 Cleaning up Docker resources...'
                         sh '''
-                        # Prune old images
                         docker image prune -af --filter "until=24h" || true
-                        
-                        # Remove buildx builder to free resources
                         docker buildx rm mybuilder || true
-                        
-                        # Show disk usage
                         docker system df
                         '''
                     }
