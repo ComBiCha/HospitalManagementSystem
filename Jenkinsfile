@@ -5,7 +5,7 @@ pipeline {
 apiVersion: v1
 kind: Pod
 spec:
-  serviceAccountName: 'jenkins'
+  serviceAccountName: 'jenkins-admin'
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
