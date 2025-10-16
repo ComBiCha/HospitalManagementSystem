@@ -187,7 +187,7 @@ spec:
                         
                         sh """
                         docker buildx build \\
-                            --platform linux/amd64 \\
+                            --platform linux/amd64,linux/arm64 \\
                             --tag ${env.BACKEND_IMAGE_NAME}:${env.BACKEND_TAG} \\
                             --file HospitalManagementSystem.API/Dockerfile \\
                             --progress=plain \\
@@ -246,7 +246,7 @@ spec:
                         dir('frontend') {
                             sh """
                             docker buildx build \\
-                                --platform linux/amd64 \\
+                                --platform linux/amd64,linux/arm64 \\
                                 --tag ${env.FRONTEND_IMAGE_NAME}:${env.FRONTEND_TAG} \\
                                 --progress=plain \\
                                 --pull \\
