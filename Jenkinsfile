@@ -1,32 +1,54 @@
-// Jenkinsfile - Phiên bản cuối cùng
 pipeline {
     agent {
         kubernetes {
-            cloud 'kubernetes'
-            serviceAccount 'jenkins'
-            containerTemplate {
-                name 'jnlp'
-                image 'jenkins/inbound-agent:3345.v03dee9b_f88fc-1'
-                args '$(JENKINS_SECRET) $(JENKINS_NAME)'
-                resources '1024m'
-            }
-            containerTemplate {
-                name 'docker'
-                image 'docker:20.10.7'
-                command 'cat'
-                ttyEnabled true
-                privileged true
-                volumeMounts {
-                    mountPath '/var/run/docker.sock'
-                    hostPath '/var/run/docker.sock'
-                }
-            }
-            containerTemplate {
-                name 'kubectl'
-                image 'lachlanevenson/k8s-kubectl:v1.23.3'
-                command 'cat'
-                ttyEnabled true
-            }
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: 'jenkins'
+  containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:3345.v03dee9b_f88fc-1
+    args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
+    resources:
+      requests:
+        cpu: "512m"
+        memory: "512Mi"
+      limits:
+        cpu: "1024m"
+        memory: "1024Mi"
+  - name: docker
+    image: docker:20.10.7
+    command: ['cat']
+    tty: true
+    securityContext:
+      privileged: true
+    volumeMounts:
+      - name: docker-sock
+        mountPath: /var/run/docker.sock
+    resources:
+      requests:
+        cpu: "512m"
+        memory: "512Mi"
+      limits:
+        cpu: "1024m"
+        memory: "1024Mi"
+  - name: kubectl
+    image: lachlanevenson/k8s-kubectl:v1.23.3
+    command: ['cat']
+    tty: true
+    resources:
+      requests:
+        cpu: "512m"
+        memory: "512Mi"
+      limits:
+        cpu: "1024m"
+        memory: "1024Mi"
+  volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock
+"""
         }
     }
 
@@ -41,6 +63,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 container('jnlp') {
+                    echo 'Checking out source code...'
                     checkout scm
                 }
             }
@@ -49,18 +72,17 @@ pipeline {
         stage('Setup Configuration') {
             steps {
                 container('kubectl') {
-                    // DÙNG withCredentials ĐỂ TRUY CẬP SECRET FILE
-                    withCredentials([file(credentialsId: 'hms-env-file', variable: 'ENV_FILE_PATH')]) {
-                        echo 'Applying Kubernetes configurations from secret file...'
-                        sh "kubectl delete configmap hms-api-config || true"
-                        // DÙNG BIẾN ENV_FILE_PATH MÀ JENKINS CUNG CẤP
-                        sh "kubectl create configmap hms-api-config --from-env-file=${ENV_FILE_PATH}"
+                    script {
+                        withCredentials([file(credentialsId: 'hms-env-file', variable: 'ENV_FILE_PATH')]) {
+                            echo 'Applying Kubernetes configurations from secret file...'
+                            sh "kubectl delete configmap hms-api-config || true"
+                            sh "kubectl create configmap hms-api-config --from-env-file=${ENV_FILE_PATH}"
+                        }
                     }
                 }
             }
         }
 
-        // ... các stage còn lại giữ nguyên ...
         stage('Build & Push Backend') {
             when { anyOf { expression { env.BUILD_NUMBER == '1' }; changeset "HospitalManagementSystem.API/**" } }
             steps {
@@ -124,6 +146,18 @@ pipeline {
                     }
                 }
             }
+        }
+    }
+
+    post {
+        always {
+            container('docker') {
+                echo 'Logging out from Docker Hub...'
+                sh 'docker logout || true'
+            }
+        }
+        failure {
+            echo 'Pipeline failed! Check logs for details.'
         }
     }
 }
