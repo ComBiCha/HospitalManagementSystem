@@ -18,21 +18,20 @@ spec:
         cpu: "1024m"
         memory: "1024Mi"
   - name: docker
-    image: docker:20.10.7
-    command: ['cat']
-    tty: true
+    image: docker:24-dind
+    command: ['dockerd', '--host=unix:///var/run/docker.sock', '--host=tcp://0.0.0.0:2375']
     securityContext:
       privileged: true
     volumeMounts:
-      - name: docker-sock
-        mountPath: /var/run/docker.sock
+      - name: docker-graph-storage
+        mountPath: /var/lib/docker
     resources:
       requests:
         cpu: "512m"
-        memory: "512Mi"
+        memory: "1Gi"
       limits:
-        cpu: "1024m"
-        memory: "1024Mi"
+        cpu: "2"
+        memory: "2Gi"
   - name: kubectl
     image: lachlanevenson/k8s-kubectl:v1.23.3
     command: ['cat']
@@ -45,9 +44,8 @@ spec:
         cpu: "1024m"
         memory: "1024Mi"
   volumes:
-    - name: docker-sock
-      hostPath:
-        path: /var/run/docker.sock
+    - name: docker-graph-storage
+      emptyDir: {}
 """
         }
     }
@@ -57,6 +55,7 @@ spec:
         BACKEND_IMAGE_NAME = "${env.DOCKER_REGISTRY}/hms-api"
         FRONTEND_IMAGE_NAME = "${env.DOCKER_REGISTRY}/hms-frontend"
         IMAGE_TAG = "build-${env.BUILD_NUMBER}"
+        DOCKER_HOST = "tcp://localhost:2375"
     }
 
     stages {
@@ -89,11 +88,24 @@ spec:
                 container('docker') {
                     script {
                         echo "Building Backend Image: ${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                        
+                        // Đợi Docker daemon sẵn sàng
+                        sh "sleep 10"
+                        sh "docker info"
+                        
                         withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                             sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
                         }
+                        
+                        // Setup buildx builder
                         sh """
-                        docker buildx build --platform linux/amd64,linux/arm64 \\
+                        docker buildx create --use --name mybuilder || true
+                        docker buildx inspect --bootstrap
+                        """
+                        
+                        // Build và push cho linux/amd64
+                        sh """
+                        docker buildx build --platform linux/amd64 \\
                             -t ${env.BACKEND_IMAGE_NAME}:${env.IMAGE_TAG} \\
                             -f HospitalManagementSystem.API/Dockerfile . --push
                         """
@@ -125,9 +137,12 @@ spec:
                         withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                             sh "echo ${DOCKER_PASS} | docker login -u ${DOCKER_USER} --password-stdin"
                         }
+                        
                         dir('frontend') {
-                            sh "docker build -t ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG} ."
-                            sh "docker push ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG}"
+                            sh """
+                            docker buildx build --platform linux/amd64 \\
+                                -t ${env.FRONTEND_IMAGE_NAME}:${env.IMAGE_TAG} . --push
+                            """
                         }
                     }
                 }
