@@ -8,8 +8,8 @@ export default function AccountantLayout({ children }: { children: React.ReactNo
 
   const menuItems = [
     { id: 'payments', label: 'Thu phí', icon: CreditCard },
-    { id: 'reports', label: 'Báo cáo', icon: LayoutDashboard }//,
-    // { id: 'settings', label: 'Cài đặt', icon: Settings },
+    { id: 'reports', label: 'Báo cáo', icon: LayoutDashboard },
+    { id: 'settings', label: 'Cài đặt', icon: Settings },
   ];
 
   return (
