@@ -57,8 +57,9 @@ spec:
       timeoutSeconds: 10
   
   - name: kubectl
-    image: bitnami/kubectl:latest
-    command: ['cat']
+    image: alpine/k8s:1.28.3
+    command: ['/bin/sh']
+    args: ['-c', 'while true; do sleep 30; done']
     tty: true
     resources:
       requests:
@@ -192,8 +193,6 @@ spec:
                             --progress=plain \\
                             --pull \\
                             --push \\
-                            --cache-from type=registry,ref=${env.BACKEND_IMAGE_NAME}:buildcache \\
-                            --cache-to type=registry,ref=${env.BACKEND_IMAGE_NAME}:buildcache,mode=max \\
                             .
                         """
                         
@@ -252,8 +251,6 @@ spec:
                                 --progress=plain \\
                                 --pull \\
                                 --push \\
-                                --cache-from type=registry,ref=${env.FRONTEND_IMAGE_NAME}:buildcache \\
-                                --cache-to type=registry,ref=${env.FRONTEND_IMAGE_NAME}:buildcache,mode=max \\
                                 .
                             """
                         }
