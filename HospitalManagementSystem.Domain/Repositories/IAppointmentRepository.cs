@@ -21,5 +21,6 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<bool> HasConflictingAppointmentAsync(int doctorId, DateTime appointmentDate, int? excludeAppointmentId = null);
         Task<List<Appointment>> GetDoctorAppointmentsAsync(int doctorId, DateTime startDate, DateTime endDate);
         Task<Appointment?> GetByIdWithDetailsAsync(int appointmentId);
+        Task<(IEnumerable<Appointment> Appointments, int TotalCount)> GetEligibleForDepositAppointmentsAsync(int page, int pageSize);
     }
 }

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using System.Text.Json;
 
 namespace HospitalManagementSystem.Application.Services
 {
@@ -18,6 +19,7 @@ namespace HospitalManagementSystem.Application.Services
         private readonly IMedicalRecordRepository _medicalRecordRepository;
         private readonly IPaymentRepository _paymentRepository;
         private readonly IPatientRepository _patientRepository;
+        private readonly IAppointmentRepository _appointmentRepository;
         private readonly HospitalDbContext _context;
         private readonly IRabbitMQService _rabbitMQService;
         private readonly IConfiguration _configuration;
@@ -26,6 +28,7 @@ namespace HospitalManagementSystem.Application.Services
             IMedicalRecordRepository medicalRecordRepository, 
             IPaymentRepository paymentRepository, 
             IPatientRepository patientRepository,
+            IAppointmentRepository appointmentRepository,
             HospitalDbContext context, 
             IRabbitMQService rabbitMQService,
             IConfiguration configuration)
@@ -33,17 +36,298 @@ namespace HospitalManagementSystem.Application.Services
             _medicalRecordRepository = medicalRecordRepository;
             _paymentRepository = paymentRepository;
             _patientRepository = patientRepository;
+            _appointmentRepository = appointmentRepository;
             _context = context;
             _rabbitMQService = rabbitMQService;
             _configuration = configuration;
         }
 
+        #region Eligible Appointments for Deposit
+
+        public async Task<PaginatedResultDto<EligibleAppointmentDto>> GetEligibleForDepositAppointmentsAsync(int page, int pageSize)
+        {
+            var (appointments, totalCount) = await _appointmentRepository.GetEligibleForDepositAppointmentsAsync(page, pageSize);
+
+            var dtos = new List<EligibleAppointmentDto>();
+
+            foreach (var appointment in appointments)
+            {
+                var dto = new EligibleAppointmentDto
+                {
+                    AppointmentId = appointment.Id,
+                    AppointmentDate = appointment.Date,
+                    PatientName = appointment.Patient?.Name ?? "N/A",
+                    PatientId = appointment.PatientId,
+                    DoctorName = appointment.Doctor?.Name ?? "N/A",
+                    AppointmentStatus = appointment.Status
+                };
+
+                var pendingPayment = await _paymentRepository.GetPendingDepositByAppointmentIdAsync(appointment.Id);
+                if (pendingPayment != null)
+                {
+                    dto.PendingPaymentId = pendingPayment.Id;
+                    dto.PendingPaymentMethod = pendingPayment.PaymentMethod;
+                    dto.PendingPaymentStatus = pendingPayment.Status;
+
+                    if (pendingPayment.PaymentMethod == "Stripe" && !string.IsNullOrEmpty(pendingPayment.StripeSessionId))
+                    {
+                        try
+                        {
+                            var sessionService = new SessionService();
+                            var session = await sessionService.GetAsync(pendingPayment.StripeSessionId);
+                            if (session.Status == "open")
+                            {
+                                dto.StripeCheckoutUrl = session.Url;
+                                dto.StripeSessionExpiresAt = session.ExpiresAt;
+                            }
+                        }
+                        catch (StripeException) 
+                        {
+                            // Session is likely expired or invalid, ignore and leave URL null
+                        }
+                    }
+                }
+                dtos.Add(dto);
+            }
+
+            return new PaginatedResultDto<EligibleAppointmentDto>
+            {
+                Items = dtos,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize
+            };
+        }
+
+        #endregion
+
+        #region Advance Payment
+        public async Task<decimal> GetAdvancePaymentSuggestionAsync(int appointmentId)
+        {
+            var appointment = await _appointmentRepository.GetByIdWithDetailsAsync(appointmentId);
+            if (appointment?.Doctor == null)
+            {
+                throw new KeyNotFoundException("Appointment or Doctor not found.");
+            }
+
+            var specialty = appointment.Doctor.Specialty;
+            var suggestions = _configuration.GetSection("AdvancePaymentSuggestions").Get<Dictionary<string, decimal>>();
+
+            if (suggestions != null && suggestions.TryGetValue(specialty, out var amount))
+            {
+                return amount;
+            }
+            
+            if (suggestions != null && suggestions.TryGetValue("Default", out var defaultAmount))
+            {
+                return defaultAmount;
+            }
+
+            return 0;
+        }
+
+        public async Task<PaymentDto> InitiateAdvanceCashPaymentAsync(int appointmentId)
+        {
+            var existingPendingPayment = await _paymentRepository.GetPendingDepositByAppointmentIdAsync(appointmentId);
+            if (existingPendingPayment != null)
+            {
+                throw new InvalidOperationException($"An advance payment (ID: {existingPendingPayment.Id}, Method: {existingPendingPayment.PaymentMethod}) is already pending for this appointment.");
+            }
+
+            var suggestedAmount = await GetAdvancePaymentSuggestionAsync(appointmentId);
+            if (suggestedAmount <= 0)
+            {
+                throw new InvalidOperationException("No advance payment suggestion found for this appointment's specialty.");
+            }
+
+            return await InitiateAdvancePaymentAsync(appointmentId, "Cash", suggestedAmount);
+        }
+
+        public async Task<InitiateStripePaymentResponseDto> InitiateAdvanceStripePaymentAsync(int appointmentId)
+        {
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var existingPendingPayment = await _paymentRepository.GetPendingDepositByAppointmentIdAsync(appointmentId);
+                if (existingPendingPayment != null)
+                {
+                    if (existingPendingPayment.PaymentMethod == "Cash")
+                    {
+                        throw new InvalidOperationException("A cash payment is already pending. Please confirm or cancel it first.");
+                    }
+
+                    if (existingPendingPayment.PaymentMethod == "Stripe" && !string.IsNullOrEmpty(existingPendingPayment.StripeSessionId))
+                    {
+                        var sessionService = new SessionService();
+                        try
+                        {
+                            var session = await sessionService.GetAsync(existingPendingPayment.StripeSessionId);
+                            if (session.Status == "open" && session.ExpiresAt > DateTime.UtcNow)
+                            {
+                                await transaction.CommitAsync();
+                                return new InitiateStripePaymentResponseDto
+                                {
+                                    PaymentId = existingPendingPayment.Id,
+                                    StripeCheckoutUrl = session.Url,
+                                    ExpiresAt = session.ExpiresAt
+                                };
+                            }
+                            else
+                            {
+                                existingPendingPayment.Status = PaymentStatuses.Failed;
+                                existingPendingPayment.FailureReason = "Stripe session expired or was closed. Creating a new one.";
+                                await _paymentRepository.UpdateAsync(existingPendingPayment);
+                            }
+                        }
+                        catch (StripeException ex)
+                        {
+                            existingPendingPayment.Status = PaymentStatuses.Failed;
+                            existingPendingPayment.FailureReason = $"Stripe session not found, creating a new one: {ex.Message}";
+                            await _paymentRepository.UpdateAsync(existingPendingPayment);
+                        }
+                    }
+                }
+
+                var suggestedAmount = await GetAdvancePaymentSuggestionAsync(appointmentId);
+                if (suggestedAmount <= 0)
+                {
+                    throw new InvalidOperationException("No advance payment suggestion found for this appointment's specialty.");
+                }
+
+                var paymentDto = await InitiateAdvancePaymentAsync(appointmentId, "Stripe", suggestedAmount, false); // Don't start a new transaction
+
+                var patient = await _patientRepository.GetPatientByIdAsync(paymentDto.PatientId);
+                var appointment = await _appointmentRepository.GetByIdAsync(appointmentId);
+
+                var expiresAt = DateTime.UtcNow.AddMinutes(30);
+                var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:3000";
+                var options = new SessionCreateOptions
+                {
+                    PaymentMethodTypes = new List<string> { "card" },
+                    LineItems = new List<SessionLineItemOptions>
+                    {
+                        new SessionLineItemOptions
+                        {
+                            PriceData = new SessionLineItemPriceDataOptions
+                            {
+                                Currency = "vnd",
+                                ProductData = new SessionLineItemPriceDataProductDataOptions
+                                {
+                                    Name = $"Advance Payment for Appointment #{appointmentId}",
+                                    Description = $"Advance payment for appointment with Dr. {appointment.Doctor.Name} on {appointment.Date:yyyy-MM-dd}",
+                                },
+                                UnitAmount = (long)paymentDto.Amount,
+                            },
+                            Quantity = 1,
+                        },
+                    },
+                    Mode = "payment",
+                    ExpiresAt = expiresAt,
+                    SuccessUrl = $"{baseUrl}/payment-success.html",
+                    CancelUrl = $"{baseUrl}/payment-cancelled.html",
+                    CustomerEmail = patient.Email,
+                    Metadata = new Dictionary<string, string>
+                    {
+                        { "payment_id", paymentDto.Id.ToString() },
+                        { "appointment_id", appointmentId.ToString() },
+                        { "payment_type", PaymentTypes.Deposit }
+                    }
+                };
+
+                var service = new SessionService();
+                var newSession = await service.CreateAsync(options);
+
+                var paymentToUpdate = await _paymentRepository.GetByIdAsync(paymentDto.Id);
+                paymentToUpdate.StripeSessionId = newSession.Id;
+                await _paymentRepository.UpdateAsync(paymentToUpdate);
+
+                await transaction.CommitAsync();
+
+                return new InitiateStripePaymentResponseDto
+                {
+                    PaymentId = paymentDto.Id,
+                    StripeCheckoutUrl = newSession.Url,
+                    ExpiresAt = expiresAt
+                };
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
+        private async Task<PaymentDto> InitiateAdvancePaymentAsync(int appointmentId, string paymentMethod, decimal amount, bool useTransaction = true)
+        {
+            var transaction = useTransaction ? await _context.Database.BeginTransactionAsync() : null;
+            try
+            {
+                var appointment = await _appointmentRepository.GetByIdAsync(appointmentId);
+                if (appointment == null)
+                {
+                    throw new KeyNotFoundException("Appointment not found.");
+                }
+
+                if (appointment.Status == "Completed" || appointment.Status == "Cancelled" || appointment.Status == "ExpiredPayment")
+                {
+                    throw new InvalidOperationException($"Appointment with status '{appointment.Status}' is not eligible for an advance payment.");
+                }
+
+                var payment = new Payment
+                {
+                    PatientId = appointment.PatientId,
+                    AppointmentId = appointment.Id,
+                    Amount = amount,
+                    PaymentType = PaymentTypes.Deposit,
+                    PaymentMethod = paymentMethod,
+                    Status = PaymentStatuses.Pending,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                var createdPayment = await _paymentRepository.CreateAsync(payment);
+                if (transaction != null) 
+                {
+                    await transaction.CommitAsync();
+                }
+
+                return new PaymentDto
+                {
+                    Id = createdPayment.Id,
+                    PatientId = createdPayment.PatientId,
+                    AppointmentId = createdPayment.AppointmentId,
+                    Amount = createdPayment.Amount,
+                    PaymentType = createdPayment.PaymentType,
+                    PaymentMethod = createdPayment.PaymentMethod,
+                    Status = createdPayment.Status,
+                    CreatedAt = createdPayment.CreatedAt
+                };
+            }
+            catch (Exception)
+            {
+                if (transaction != null) 
+                {
+                    await transaction.RollbackAsync();
+                }
+                throw;
+            }
+            finally
+            {
+                if (transaction != null)
+                {
+                    await transaction.DisposeAsync();
+                }
+            }
+        }
+
+        #endregion
+
+        #region Final Payment
         public async Task<IEnumerable<UnpaidMedicalRecordDto>> GetUnpaidMedicalRecordsAsync(int page, int pageSize)
         {
             var medicalRecords = await _medicalRecordRepository.GetUnpaidMedicalRecordsAsync(page, pageSize);
             var dtos = new List<UnpaidMedicalRecordDto>();
 
-            foreach (var mr in medicalRecords)
+            foreach (var mr in medicalRecords.Where(mr => mr.PaidAmount < mr.TotalFee))
             {
                 var pendingPayment = await _paymentRepository.GetPendingPaymentByMedicalRecordIdAsync(mr.Id);
                 dtos.Add(new UnpaidMedicalRecordDto
@@ -234,20 +518,16 @@ namespace HospitalManagementSystem.Application.Services
                 throw;
             }
         }
+        #endregion
 
+        #region Payment Confirmation and Cancellation
         public async Task<bool> ConfirmCashPaymentAsync(int paymentId)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
                 var payment = await _paymentRepository.GetByIdAsync(paymentId);
-                if (payment == null || payment.Status != PaymentStatuses.Pending || payment.PaymentMethod != "Cash" || !payment.MedicalRecordId.HasValue)
-                {
-                    return false;
-                }
-
-                var medicalRecord = await _medicalRecordRepository.GetByIdAsync(payment.MedicalRecordId.Value);
-                if (medicalRecord == null || medicalRecord.PaymentStatus != "Unpaid")
+                if (payment == null || payment.Status != PaymentStatuses.Pending || payment.PaymentMethod != "Cash")
                 {
                     return false;
                 }
@@ -256,9 +536,38 @@ namespace HospitalManagementSystem.Application.Services
                 payment.PaidAt = DateTime.UtcNow;
                 await _paymentRepository.UpdateAsync(payment);
 
-                medicalRecord.PaymentStatus = "Paid";
-                medicalRecord.PaidAmount += payment.Amount;
-                await _medicalRecordRepository.UpdateAsync(medicalRecord);
+                int? medicalRecordId = payment.MedicalRecordId;
+
+                if (!medicalRecordId.HasValue && payment.PaymentType == PaymentTypes.Deposit && payment.AppointmentId.HasValue)
+                {
+                    var medicalRecord = await _medicalRecordRepository.GetByAppointmentIdAsync(payment.AppointmentId.Value);
+                    if (medicalRecord != null)
+                    {
+                        medicalRecordId = medicalRecord.Id;
+                    }
+                }
+
+                if (medicalRecordId.HasValue)
+                {
+                    var medicalRecord = await _medicalRecordRepository.GetByIdAsync(medicalRecordId.Value);
+                    if (medicalRecord != null)
+                    {
+                        var completedDeposits = await _paymentRepository.GetCompletedDepositsByAppointmentIdAsync(medicalRecord.AppointmentId);
+                        var completedMedicalPayments = await _paymentRepository.GetCompletedPaymentsByMedicalRecordIdAsync(medicalRecord.Id);
+                        var allPayments = completedDeposits.Union(completedMedicalPayments).DistinctBy(p => p.Id);
+                        medicalRecord.PaidAmount = allPayments.Sum(p => p.Amount);
+
+                        if (payment.PaymentType == PaymentTypes.FinalPayment && medicalRecord.PaidAmount >= medicalRecord.TotalFee)
+                        {
+                            medicalRecord.PaymentStatus = "Paid";
+                        }
+                        else
+                        {
+                            medicalRecord.PaymentStatus = "Unpaid";
+                        }
+                        await _medicalRecordRepository.UpdateAsync(medicalRecord);
+                    }
+                }
 
                 await transaction.CommitAsync();
                 return true;
@@ -325,6 +634,133 @@ namespace HospitalManagementSystem.Application.Services
                 throw;
             }
         }
+        #endregion
+
+        #region Refund Management
+
+        public async Task<IEnumerable<RefundableMedicalRecordDto>> GetRefundableMedicalRecordsAsync(int page, int pageSize)
+        {
+            var medicalRecords = await _medicalRecordRepository.GetRefundableMedicalRecordsAsync(page, pageSize);
+            var dtos = new List<RefundableMedicalRecordDto>();
+
+            foreach (var mr in medicalRecords)
+            {
+                var refundPayment = await _paymentRepository.GetPendingPaymentByMedicalRecordIdAsync(mr.Id);
+
+                dtos.Add(new RefundableMedicalRecordDto
+                {
+                    MedicalRecordId = mr.Id,
+                    AppointmentId = mr.AppointmentId,
+                    PatientName = mr.Patient.Name,
+                    PatientId = mr.PatientId,
+                    DoctorName = mr.Doctor.Name,
+                    TotalFee = mr.TotalFee,
+                    PaidAmount = mr.PaidAmount,
+                    OverpaidAmount = mr.PaidAmount - mr.TotalFee,
+                    RefundPaymentId = refundPayment?.Id,
+                    RefundPaymentStatus = refundPayment?.Status
+                });
+            }
+            return dtos;
+        }
+
+        public async Task<PaymentDto> InitiateRefundPaymentAsync(int medicalRecordId)
+        {
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var medicalRecord = await _medicalRecordRepository.GetByIdAsync(medicalRecordId);
+                if (medicalRecord == null || medicalRecord.PaidAmount <= medicalRecord.TotalFee)
+                {
+                    throw new InvalidOperationException("Medical record is not eligible for a refund.");
+                }
+
+                var existingRefund = await _paymentRepository.GetPendingPaymentByMedicalRecordIdAsync(medicalRecordId);
+                if (existingRefund != null)
+                {
+                    throw new InvalidOperationException($"A refund payment (ID: {existingRefund.Id}) is already pending for this medical record.");
+                }
+
+                var refundAmount = medicalRecord.TotalFee - medicalRecord.PaidAmount; // This will be a negative number
+
+                var payment = new Payment
+                {
+                    PatientId = medicalRecord.PatientId,
+                    MedicalRecordId = medicalRecord.Id,
+                    AppointmentId = medicalRecord.AppointmentId,
+                    Amount = refundAmount,
+                    PaymentType = PaymentTypes.FinalPayment, // As requested
+                    PaymentMethod = "Cash",
+                    Status = PaymentStatuses.Pending,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                var createdPayment = await _paymentRepository.CreateAsync(payment);
+                await transaction.CommitAsync();
+
+                return new PaymentDto
+                {
+                    Id = createdPayment.Id,
+                    MedicalRecordId = createdPayment.MedicalRecordId,
+                    Amount = createdPayment.Amount,
+                    PaymentType = createdPayment.PaymentType,
+                    PaymentMethod = createdPayment.PaymentMethod,
+                    Status = createdPayment.Status,
+                    CreatedAt = createdPayment.CreatedAt
+                };
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
+        public async Task<bool> CompleteRefundPaymentAsync(int paymentId)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var payment = await _paymentRepository.GetByIdAsync(paymentId);
+                if (payment == null || payment.Status != PaymentStatuses.Pending || payment.Amount >= 0)
+                {
+                    return false; // Not a pending refund payment
+                }
+
+                payment.Status = PaymentStatuses.Completed;
+                payment.PaidAt = DateTime.UtcNow;
+                await _paymentRepository.UpdateAsync(payment);
+
+                if (payment.MedicalRecordId.HasValue)
+                {
+                    var medicalRecord = await _medicalRecordRepository.GetByIdAsync(payment.MedicalRecordId.Value);
+                    if (medicalRecord != null)
+                    {
+                        var completedDeposits = await _paymentRepository.GetCompletedDepositsByAppointmentIdAsync(medicalRecord.AppointmentId);
+                        var completedMedicalPayments = await _paymentRepository.GetCompletedPaymentsByMedicalRecordIdAsync(medicalRecord.Id);
+                        var allPayments = completedDeposits.Union(completedMedicalPayments).DistinctBy(p => p.Id);
+                        medicalRecord.PaidAmount = allPayments.Sum(p => p.Amount);
+
+                        // After refund, PaidAmount should equal TotalFee, so we can mark as Paid
+                        if (Math.Abs(medicalRecord.PaidAmount - medicalRecord.TotalFee) < 0.01m)
+                        {
+                            medicalRecord.PaymentStatus = "Paid";
+                        }
+                        await _medicalRecordRepository.UpdateAsync(medicalRecord);
+                    }
+                }
+
+                await transaction.CommitAsync();
+                return true;
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
+        #endregion
     }
 }
 

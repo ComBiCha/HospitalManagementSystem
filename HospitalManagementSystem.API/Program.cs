@@ -36,6 +36,9 @@ using Stripe;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add custom json configuration file
+builder.Configuration.AddJsonFile("src/advance_payment_suggestions.json", optional: true, reloadOnChange: true);
+
 // Load .env
 Env.Load();
 

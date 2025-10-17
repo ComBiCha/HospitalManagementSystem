@@ -35,52 +35,7 @@ public class MedicalRecordApplicationService
         if (medicalRecord == null || medicalRecord.DoctorId != doctorId)
             return null;
 
-        var paidAmount = medicalRecord.Payments
-            .Where(p => p.Status == "Completed" &&
-                        (p.PaymentType == "Deposit" || p.PaymentType == "FinalPayment"))
-            .Sum(p => p.Amount);
-
-        return new MedicalRecordDto
-        {
-            Id = medicalRecord.Id,
-            AppointmentId = medicalRecord.AppointmentId,
-            PatientId = medicalRecord.PatientId,
-            DoctorId = medicalRecord.DoctorId,
-            Diagnosis = medicalRecord.Diagnosis,
-            Symptoms = medicalRecord.Symptoms,
-            Treatment = medicalRecord.Treatment,
-            Prescription = medicalRecord.Prescription,
-            Notes = medicalRecord.Notes,
-            ConsultationFee = medicalRecord.ConsultationFee,
-            MedicineFee = medicalRecord.MedicineFee,
-            TestFee = medicalRecord.TestFee,
-            OtherFee = medicalRecord.OtherFee,
-            PaidAmount = paidAmount,
-            PaymentStatus = medicalRecord.PaymentStatus,
-            CreatedAt = medicalRecord.CreatedAt,
-            UpdatedAt = medicalRecord.UpdatedAt,
-            Patient = medicalRecord.Patient != null ? new PatientDto
-            {
-                Id = medicalRecord.Patient.Id,
-                Name = medicalRecord.Patient.Name,
-                Age = medicalRecord.Patient.Age,
-                Email = medicalRecord.Patient.Email,
-                Status = medicalRecord.Patient.Status.ToString()
-            } : null,
-            Doctor = medicalRecord.Doctor != null ? new DoctorDto
-            {
-                Id = medicalRecord.Doctor.Id,
-                Name = medicalRecord.Doctor.Name,
-                Specialty = medicalRecord.Doctor.Specialty,
-                Email = medicalRecord.Doctor.Email
-            } : null,
-            Appointment = medicalRecord.Appointment != null ? new SimpleAppointmentDto
-            {
-                Id = medicalRecord.Appointment.Id,
-                Date = medicalRecord.Appointment.Date,
-                Status = medicalRecord.Appointment.Status
-            } : null
-        };
+        return MapToDto(medicalRecord);
     }
 
     public async Task<MedicalRecordDto?> GetMedicalRecordByIdAsync(int id)
@@ -88,12 +43,7 @@ public class MedicalRecordApplicationService
         var medicalRecord = await _medicalRecordRepository.GetByIdAsync(id);
         if (medicalRecord == null) return null;
 
-        var paidAmount = medicalRecord.Payments
-            .Where(p => p.Status == "Completed" && 
-                        (p.PaymentType == "Deposit" || p.PaymentType == "FinalPayment"))
-            .Sum(p => p.Amount);
-
-        return MapToDto(medicalRecord, paidAmount);
+        return MapToDto(medicalRecord);
     }
     
     public async Task<(string Message, MedicalRecordDto? MedicalRecord)> UpdateMedicalRecordAsync(int id, UpdateMedicalRecordRequest request)
@@ -111,12 +61,6 @@ public class MedicalRecordApplicationService
         if (request.TestFee.HasValue) medicalRecord.TestFee = request.TestFee.Value;
         if (request.OtherFee.HasValue) medicalRecord.OtherFee = request.OtherFee.Value;
 
-        var paidAmount = medicalRecord.Payments
-            .Where(p => p.Status == "Completed" && 
-                        (p.PaymentType == "Deposit" || p.PaymentType == "FinalPayment"))
-            .Sum(p => p.Amount);
-
-        medicalRecord.PaidAmount = paidAmount;
         medicalRecord.UpdatedAt = DateTime.UtcNow;
 
         var history = new MedicalRecordHistory
@@ -144,7 +88,7 @@ public class MedicalRecordApplicationService
         await _cacheService.RemovePatternAsync($"patient:{medicalRecord.PatientId}:medical-records:*");
         _logger.LogInformation("Cleared medical record cache for patient {PatientId}", medicalRecord.PatientId);
 
-        return ("Cập nhật thành công", MapToDto(medicalRecord, paidAmount));
+        return ("Cập nhật thành công", MapToDto(medicalRecord));
     }
 
     public async Task<(string Message, bool Success)> CompleteMedicalRecordAsync(int id)
@@ -152,22 +96,6 @@ public class MedicalRecordApplicationService
         var medicalRecord = await _medicalRecordRepository.GetByIdAsync(id);
         if (medicalRecord == null)
             return ("Medical record not found", false);
-
-        var totalFee = medicalRecord.ConsultationFee + medicalRecord.MedicineFee +
-                       medicalRecord.TestFee + medicalRecord.OtherFee;
-
-        var paidAmount = medicalRecord.Payments
-            .Where(p => p.Status == "Completed")
-            .Sum(p => p.Amount);
-
-        medicalRecord.PaidAmount = paidAmount;
-
-        if (paidAmount >= totalFee)
-            medicalRecord.PaymentStatus = "FullyPaid";
-        else if (paidAmount > 0)
-            medicalRecord.PaymentStatus = "PartiallyPaid";
-        else
-            medicalRecord.PaymentStatus = "Unpaid";
 
         if (medicalRecord.Appointment != null)
         {
@@ -277,11 +205,7 @@ public class MedicalRecordApplicationService
         await _cacheService.RemovePatternAsync($"patient:{medicalRecord.PatientId}:medical-records:*");
         _logger.LogInformation("Cleared medical record cache for patient {PatientId}", medicalRecord.PatientId);
 
-        var paidAmount = medicalRecord.Payments
-            .Where(p => p.Status == "Completed")
-            .Sum(p => p.Amount);
-
-        return ("Đã chuyển nhập viện", MapToDto(medicalRecord, paidAmount));
+        return ("Đã chuyển nhập viện", MapToDto(medicalRecord));
     }
 
     public async Task<(bool Success, string Message)> CompletePrescriptionItemAsync(int id)
@@ -451,7 +375,7 @@ public class MedicalRecordApplicationService
         }
     }
 
-    private MedicalRecordDto MapToDto(MedicalRecord record, decimal paidAmount)
+    private MedicalRecordDto MapToDto(MedicalRecord record)
     {
         return new MedicalRecordDto
         {
@@ -468,7 +392,7 @@ public class MedicalRecordApplicationService
             MedicineFee = record.MedicineFee,
             TestFee = record.TestFee,
             OtherFee = record.OtherFee,
-            PaidAmount = paidAmount,
+            PaidAmount = record.PaidAmount,
             PaymentStatus = record.PaymentStatus,
             CreatedAt = record.CreatedAt,
             UpdatedAt = record.UpdatedAt,

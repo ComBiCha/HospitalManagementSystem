@@ -87,10 +87,21 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             var existing = await _context.MedicalRecords.FindAsync(medicalRecord.Id);
             if (existing == null) return null;
 
-            medicalRecord.UpdatedAt = DateTime.UtcNow;
-            _context.Entry(existing).CurrentValues.SetValues(medicalRecord);
+            existing.Diagnosis = medicalRecord.Diagnosis;
+            existing.Symptoms = medicalRecord.Symptoms;
+            existing.Treatment = medicalRecord.Treatment;
+            existing.Prescription = medicalRecord.Prescription;
+            existing.Notes = medicalRecord.Notes;
+            existing.ConsultationFee = medicalRecord.ConsultationFee;
+            existing.MedicineFee = medicalRecord.MedicineFee;
+            existing.TestFee = medicalRecord.TestFee;
+            existing.OtherFee = medicalRecord.OtherFee;
+            existing.PaidAmount = medicalRecord.PaidAmount;
+            existing.PaymentStatus = medicalRecord.PaymentStatus;
+            existing.UpdatedAt = DateTime.UtcNow;
+
             await _context.SaveChangesAsync();
-            return medicalRecord;
+            return existing;
         }
 
         public async Task<bool> DeleteAsync(int id)
@@ -120,11 +131,28 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 .Include(m => m.Patient)
                 .Include(m => m.Doctor)
                 .Include(m => m.Appointment)
-                .Where(m => m.PaymentStatus == "Unpaid" && m.Appointment.Status == "Completed")
+                .Where(m => (m.PaymentStatus == "Unpaid" || m.PaymentStatus == "PartiallyPaid") && m.Appointment.Status == "Completed")
                 .OrderByDescending(m => m.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
+        }
+
+        public async Task<IEnumerable<MedicalRecord>> GetRefundableMedicalRecordsAsync(int page, int pageSize)
+        {
+            var refundableRecords = await _context.MedicalRecords
+                .Include(m => m.Patient)
+                .Include(m => m.Doctor)
+                .Include(m => m.Appointment)
+                .Where(m => m.Appointment.Status == "Completed")
+                .ToListAsync();
+
+            return refundableRecords
+                .Where(m => m.PaidAmount > m.TotalFee)
+                .OrderByDescending(m => m.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
         }
     }
 }

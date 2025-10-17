@@ -14,5 +14,6 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<bool> DeleteAsync(int id);
         Task<IEnumerable<MedicalRecord>> GetAllAsync();
         Task<IEnumerable<MedicalRecord>> GetUnpaidMedicalRecordsAsync(int page, int pageSize);
+        Task<IEnumerable<MedicalRecord>> GetRefundableMedicalRecordsAsync(int page, int pageSize);
     }
 }

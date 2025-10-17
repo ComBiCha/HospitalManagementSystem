@@ -309,6 +309,7 @@ namespace HospitalManagementSystem.API.Controllers
             
             if (payment != null && payment.Status == PaymentStatuses.Pending)
             {
+                // Universal update for the payment itself
                 payment.Status = PaymentStatuses.Completed;
                 payment.TransactionId = session.PaymentIntentId ?? session.Id;
                 payment.StripePaymentIntentId = session.PaymentIntentId;
@@ -316,7 +317,19 @@ namespace HospitalManagementSystem.API.Controllers
                 await _paymentRepository.UpdateAsync(payment);
 
                 var paymentType = session.Metadata.ContainsKey("payment_type") ? session.Metadata["payment_type"] : null;
+                int? medicalRecordId = payment.MedicalRecordId;
 
+                // If it's a deposit, try to find the medical record via the appointment
+                if (!medicalRecordId.HasValue && (paymentType == PaymentTypes.Deposit || paymentType == PaymentTypes.BookingFee) && payment.AppointmentId.HasValue)
+                {
+                    var medicalRecord = await _medicalRecordRepository.GetByAppointmentIdAsync(payment.AppointmentId.Value);
+                    if (medicalRecord != null)
+                    {
+                        medicalRecordId = medicalRecord.Id;
+                    }
+                }
+
+                // Handle Appointment status update for BookingFee
                 if (paymentType == PaymentTypes.BookingFee && payment.AppointmentId.HasValue)
                 {
                     var appointment = await _appointmentRepository.GetByIdAsync(payment.AppointmentId.Value);
@@ -328,13 +341,26 @@ namespace HospitalManagementSystem.API.Controllers
                         await _appointmentRepository.UpdateAsync(appointment);
                     }
                 }
-                else if (paymentType == PaymentTypes.FinalPayment && payment.MedicalRecordId.HasValue)
+
+                // Unified logic to update Medical Record if one is found/linked
+                if (medicalRecordId.HasValue)
                 {
-                    var medicalRecord = await _medicalRecordRepository.GetByIdAsync(payment.MedicalRecordId.Value);
+                    var medicalRecord = await _medicalRecordRepository.GetByIdAsync(medicalRecordId.Value);
                     if (medicalRecord != null)
                     {
-                        medicalRecord.PaymentStatus = "Paid";
-                        medicalRecord.PaidAmount += payment.Amount;
+                        var completedDeposits = await _paymentRepository.GetCompletedDepositsByAppointmentIdAsync(medicalRecord.AppointmentId);
+                        var completedMedicalPayments = await _paymentRepository.GetCompletedPaymentsByMedicalRecordIdAsync(medicalRecord.Id);
+                        var allPayments = completedDeposits.Union(completedMedicalPayments).DistinctBy(p => p.Id);
+                        medicalRecord.PaidAmount = allPayments.Sum(p => p.Amount);
+
+                        if (paymentType == PaymentTypes.FinalPayment && medicalRecord.PaidAmount >= medicalRecord.TotalFee)
+                        {
+                            medicalRecord.PaymentStatus = "Paid";
+                        }
+                        else
+                        {
+                            medicalRecord.PaymentStatus = "Unpaid";
+                        }
                         await _medicalRecordRepository.UpdateAsync(medicalRecord);
                     }
                 }

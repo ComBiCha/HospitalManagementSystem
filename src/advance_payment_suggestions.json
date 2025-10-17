@@ -1,0 +1,10 @@
+{
+  "AdvancePaymentSuggestions": {
+    "Cardiology": 500000,
+    "Neurology": 750000,
+    "Orthopedics": 1000000,
+    "Ophthalmology": 400000,
+    "ENT": 350000,
+    "Default": 300000
+  }
+}

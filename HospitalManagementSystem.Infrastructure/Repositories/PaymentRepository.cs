@@ -55,10 +55,42 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 .ToListAsync();
         }
 
+        public async Task<IEnumerable<Payment>> GetCompletedPaymentsByMedicalRecordIdAsync(int medicalRecordId)
+        {
+            return await _context.Payments
+                .Where(p => p.MedicalRecordId == medicalRecordId && p.Status == PaymentStatuses.Completed)
+                .ToListAsync();
+        }
+
         public async Task<Payment?> GetPendingPaymentByMedicalRecordIdAsync(int medicalRecordId)
         {
             return await _context.Payments
                 .FirstOrDefaultAsync(p => p.MedicalRecordId == medicalRecordId && p.Status == PaymentStatuses.Pending);
+        }
+
+        public async Task<Payment?> GetPendingDepositByAppointmentIdAsync(int appointmentId)
+        {
+            return await _context.Payments
+                .FirstOrDefaultAsync(p => p.AppointmentId == appointmentId && 
+                                      p.PaymentType == PaymentTypes.Deposit &&
+                                      p.Status == PaymentStatuses.Pending);
+        }
+
+        public async Task<Payment?> GetPendingOrCompletedDepositByAppointmentIdAsync(int appointmentId)
+        {
+            return await _context.Payments
+                .FirstOrDefaultAsync(p => p.AppointmentId == appointmentId && 
+                                      p.PaymentType == PaymentTypes.Deposit &&
+                                      (p.Status == PaymentStatuses.Pending || p.Status == PaymentStatuses.Completed));
+        }
+
+        public async Task<IEnumerable<Payment>> GetCompletedDepositsByAppointmentIdAsync(int appointmentId)
+        {
+            return await _context.Payments
+                .Where(p => p.AppointmentId == appointmentId &&
+                            p.PaymentType == PaymentTypes.Deposit &&
+                            p.Status == PaymentStatuses.Completed)
+                .ToListAsync();
         }
 
         public async Task<IEnumerable<Payment>> GetByStatusAsync(string status)
@@ -88,6 +120,12 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             existing.FailureReason = payment.FailureReason;
             existing.PaidAt = payment.PaidAt;
             existing.UpdatedAt = DateTime.UtcNow;
+
+            // Explicitly update MedicalRecordId if it has changed
+            if (existing.MedicalRecordId != payment.MedicalRecordId)
+            {
+                existing.MedicalRecordId = payment.MedicalRecordId;
+            }
 
             await _context.SaveChangesAsync();
             return existing;

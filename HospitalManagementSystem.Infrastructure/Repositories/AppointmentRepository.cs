@@ -24,57 +24,52 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
             return await _context.Appointments.FindAsync(id);
         }
 
-                public async Task<IEnumerable<Appointment>> GetByPatientIdAsync(int patientId)
+        public async Task<IEnumerable<Appointment>> GetByPatientIdAsync(int patientId)
+        {
+            return await _context.Appointments
+                .Where(a => a.PatientId == patientId)
+                .ToListAsync();
+        }
 
-                {
+        public async Task<IEnumerable<Appointment>> GetByDoctorIdAndDateAsync(int doctorId, DateTime date)
+        {
+            var utcDate = DateTime.SpecifyKind(date, DateTimeKind.Utc);
+            return await _context.Appointments
+                .Where(a => a.DoctorId == doctorId && a.Date.Date == utcDate.Date)
+                .ToListAsync();
+        }
 
-                    return await _context.Appointments
-
-                        .Where(a => a.PatientId == patientId)
-
-                        .ToListAsync();
-
-                }
-
-        
-
-                public async Task<IEnumerable<Appointment>> GetByDoctorIdAndDateAsync(int doctorId, DateTime date)
-
-                {
-
-                    var utcDate = DateTime.SpecifyKind(date, DateTimeKind.Utc);
-
-                    return await _context.Appointments
-
-                        .Where(a => a.DoctorId == doctorId && a.Date.Date == utcDate.Date)
-
-                        .ToListAsync();
-
-                }
-
-        
-
-                public async Task<Appointment> GetByIdWithIncludesAsync(int id)
-
-                {
-
-                    return await _context.Appointments
-
-                        .Include(a => a.Patient)
-
-                        .Include(a => a.Doctor)
-
-                        .FirstOrDefaultAsync(a => a.Id == id);
-
-                }
-
-        
+        public async Task<Appointment> GetByIdWithIncludesAsync(int id)
+        {
+            return await _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .FirstOrDefaultAsync(a => a.Id == id);
+        }
 
         public async Task<IEnumerable<Appointment>> GetAppointmentsWithPaymentsForCleanupAsync(DateTime cleanupTime)
         {
             return await _context.Appointments
                 .Where(a => a.Status == "PendingPayment" && a.PaymentExpiresAt != null && a.PaymentExpiresAt < cleanupTime)
                 .ToListAsync();
+        }
+
+        public async Task<(IEnumerable<Appointment> Appointments, int TotalCount)> GetEligibleForDepositAppointmentsAsync(int page, int pageSize)
+        {
+            var query = _context.Appointments
+                .Include(a => a.Patient)
+                .Include(a => a.Doctor)
+                .Where(a => a.Status != "Completed" && a.Status != "Cancelled" && a.Status != "ExpiredPayment" && a.Status != "PendingPayment");
+
+            var totalCount = await query.CountAsync();
+
+            var appointments = await query
+                .OrderByDescending(a => a.Date)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (appointments, totalCount);
         }
 
         public async Task<IEnumerable<Appointment>> GetByDoctorIdAsync(int doctorId)

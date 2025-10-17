@@ -42,7 +42,7 @@ spec:
     - ReadWriteOnce
   hostPath:
     path: "/data/jenkins-home"
-    type: DirectoryOrCreate  # Tự động tạo thư mục nếu chưa có
+    type: DirectoryOrCreate  
   storageClassName: jenkins-storage
 ---
 apiVersion: v1

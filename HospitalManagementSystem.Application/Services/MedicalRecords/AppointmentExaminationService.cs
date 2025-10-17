@@ -1,21 +1,25 @@
 using HospitalManagementSystem.Domain.Repositories;
 using HospitalManagementSystem.Application.DTOs.MedicalRecord;
 using HospitalManagementSystem.Domain.Entities;
+using System.Linq;
 
 public class AppointmentExaminationService
 {
     private readonly IAppointmentRepository _appointmentRepository;
     private readonly IDoctorAttendanceRepository _attendanceRepository;
     private readonly IMedicalRecordRepository _medicalRecordRepository;
+    private readonly IPaymentRepository _paymentRepository;
 
     public AppointmentExaminationService(
         IAppointmentRepository appointmentRepository,
         IDoctorAttendanceRepository attendanceRepository,
-        IMedicalRecordRepository medicalRecordRepository)
+        IMedicalRecordRepository medicalRecordRepository,
+        IPaymentRepository paymentRepository)
     {
         _appointmentRepository = appointmentRepository;
         _attendanceRepository = attendanceRepository;
         _medicalRecordRepository = medicalRecordRepository;
+        _paymentRepository = paymentRepository;
     }
 
     public async Task<CanStartExaminationResultDto> CanStartExaminationAsync(int appointmentId, int doctorId)
@@ -111,6 +115,9 @@ public class AppointmentExaminationService
             return ("Medical record already exists", dto);
         }
 
+        var completedDeposits = await _paymentRepository.GetCompletedDepositsByAppointmentIdAsync(appointment.Id);
+        var totalDeposited = completedDeposits.Sum(p => p.Amount);
+
         var medicalRecord = new MedicalRecord
         {
             AppointmentId = appointment.Id,
@@ -121,16 +128,32 @@ public class AppointmentExaminationService
             Treatment = "",
             Prescription = "[]",
             Notes = "",
-            ConsultationFee = 200000,
+            ConsultationFee = 200000, // Default consultation fee
             MedicineFee = 0,
             TestFee = 0,
             OtherFee = 0,
-            PaidAmount = 0,
-            PaymentStatus = "Unpaid",
+            PaidAmount = totalDeposited, // Apply deposited amount
             CreatedAt = DateTime.UtcNow
         };
 
+        // Determine payment status based on the new rule
+        if (medicalRecord.PaidAmount >= medicalRecord.TotalFee)
+        {
+            medicalRecord.PaymentStatus = "Paid";
+        }
+        else
+        {
+            medicalRecord.PaymentStatus = "Unpaid";
+        }
+
         var createdRecord = await _medicalRecordRepository.CreateAsync(medicalRecord);
+
+        // Link deposits to the new medical record
+        foreach (var deposit in completedDeposits)
+        {
+            deposit.MedicalRecordId = createdRecord.Id;
+            await _paymentRepository.UpdateAsync(deposit);
+        }
 
         appointment.Status = "InProgress";
         appointment.UpdatedAt = DateTime.UtcNow;

@@ -119,6 +119,13 @@ export interface ApiResponse<T> {
   success: boolean
 }
 
+export interface Paginated<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 // Form types
 export interface UserFormData {
   firstName: string
@@ -196,6 +203,7 @@ export interface Notification {
   sentAt?: string;
 }
 
+// MedicalRecord & Payment types
 export interface MedicalRecord {
   id: number;
   appointmentDate: string; // Comes as an ISO string
@@ -229,4 +237,31 @@ export interface UnpaidMedicalRecordDto {
   paymentStatus: string;
   pendingPaymentId?: number | null;
   pendingPaymentMethod?: string | null;
+}
+
+export interface RefundableMedicalRecordDto {
+  medicalRecordId: number;
+  appointmentId: number;
+  patientName: string;
+  patientId: number;
+  doctorName: string;
+  totalFee: number;
+  paidAmount: number;
+  overpaidAmount: number;
+  refundPaymentId?: number;
+  refundPaymentStatus?: string;
+}
+
+export interface EligibleAppointment {
+  appointmentId: number;
+  appointmentDate: string;
+  patientName: string;
+  patientId: number;
+  doctorName: string;
+  appointmentStatus: string;
+  pendingPaymentId?: number;
+  pendingPaymentMethod?: string;
+  pendingPaymentStatus?: string;
+  stripeCheckoutUrl?: string;
+  stripeSessionExpiresAt?: string;
 }
