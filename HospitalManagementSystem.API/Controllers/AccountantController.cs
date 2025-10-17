@@ -124,20 +124,20 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        [HttpPost("medical-records/{medicalRecordId}/payments/stripe/initiate")]
-        public async Task<ActionResult<InitiateStripePaymentResponseDto>> InitiateStripePayment(int medicalRecordId)
-        {
-            try
-            {
-                var responseDto = await _accountantService.InitiateStripePaymentForMedicalRecordAsync(medicalRecordId);
-                return Ok(responseDto);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error initiating Stripe payment for medical record {MedicalRecordId}", medicalRecordId);
-                return StatusCode(500, "Internal server error: " + ex.Message);
-            }
-        }
+        // [HttpPost("medical-records/{medicalRecordId}/payments/stripe/initiate")]
+        // public async Task<ActionResult<InitiateStripePaymentResponseDto>> InitiateStripePayment(int medicalRecordId)
+        // {
+        //     try
+        //     {
+        //         var responseDto = await _accountantService.InitiateStripePaymentForMedicalRecordAsync(medicalRecordId);
+        //         return Ok(responseDto);
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         _logger.LogError(ex, "Error initiating Stripe payment for medical record {MedicalRecordId}", medicalRecordId);
+        //         return StatusCode(500, "Internal server error: " + ex.Message);
+        //     }
+        // }
 
         #endregion
 
