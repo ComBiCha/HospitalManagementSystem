@@ -5,9 +5,7 @@ namespace HospitalManagementSystem.Domain.Entities
 {
     public class ImageUploadRequest
     {
-        public int AppointmentId { get; set; }
-        public int DoctorId { get; set; }
-        public int PatientId { get; set; }
+        public int MedicalRecordId { get; set; }
         public IFormFile Image { get; set; } = null!;
         public string? Description { get; set; }
         public string ImageType { get; set; } = "medical"; // medical, xray, scan, etc.
@@ -16,9 +14,7 @@ namespace HospitalManagementSystem.Domain.Entities
     public class ImageInfo
     {
         public int Id { get; set; }
-        public int AppointmentId { get; set; }
-        public int DoctorId { get; set; }
-        public int PatientId { get; set; }
+        public int MedicalRecordId { get; set; }
         public string FileName { get; set; } = string.Empty;
         public string OriginalFileName { get; set; } = string.Empty;
         public string ContentType { get; set; } = string.Empty;
@@ -27,9 +23,10 @@ namespace HospitalManagementSystem.Domain.Entities
         public string ImageType { get; set; } = string.Empty;
         public DateTime UploadedAt { get; set; }
         public string MinioObjectKey { get; set; } = string.Empty;
-        public Appointment Appointment { get; set; } = null!;
-        public Doctor Doctor { get; set; } = null!;
-        public Patient Patient { get; set; } = null!;
+        public string? OrthancInstanceId { get; set; }
+
+        // Navigation property
+        public MedicalRecord? MedicalRecord { get; set; }
     }
 
     public class ImageDownloadResponse

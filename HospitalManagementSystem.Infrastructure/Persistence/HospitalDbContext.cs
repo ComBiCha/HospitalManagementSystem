@@ -123,9 +123,7 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
                 entity.Property(e => e.ImageType).IsRequired().HasMaxLength(50);
                 entity.Property(e => e.MinioObjectKey).IsRequired().HasMaxLength(500);
                 
-                entity.HasIndex(e => e.AppointmentId);
-                entity.HasIndex(e => e.PatientId);
-                entity.HasIndex(e => e.DoctorId);
+                entity.HasIndex(e => e.MedicalRecordId);
             });
 
             modelBuilder.Entity<Notification>(entity =>

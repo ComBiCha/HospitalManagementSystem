@@ -14,7 +14,7 @@ export default function PatientSection({ patient, onUpdate, onCreate }: PatientS
   const [isCreating, setIsCreating] = useState(!patient)
   const [formData, setFormData] = useState<PatientFormData>({
     name: patient?.name || '',
-    age: patient?.age || 0,
+    dateOfBirth: patient?.dateOfBirth || '',
     email: patient?.email || ''
   })
   const [isLoading, setIsLoading] = useState(false)
@@ -40,14 +40,14 @@ export default function PatientSection({ patient, onUpdate, onCreate }: PatientS
     if (patient) {
       setFormData({
         name: patient.name,
-        age: patient.age,
+        dateOfBirth: patient.dateOfBirth || '',
         email: patient.email
       })
       setIsEditing(false)
     } else {
       setFormData({
         name: '',
-        age: 0,
+        dateOfBirth: '',
         email: ''
       })
       setIsCreating(false)
@@ -133,16 +133,14 @@ export default function PatientSection({ patient, onUpdate, onCreate }: PatientS
             </label>
             {showForm ? (
               <input
-                type="number"
-                value={formData.age}
-                onChange={(e) => setFormData({ ...formData, age: parseInt(e.target.value) || 0 })}
+                type="date"
+                value={formData.dateOfBirth}
+                onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Enter age"
-                min="0"
-                max="150"
+                placeholder="Enter date of birth"
               />
             ) : (
-              <p className="text-gray-900 py-2">{patient?.age}</p>
+              <p className="text-gray-900 py-2">{patient?.dateOfBirth}</p>
             )}
           </div>
 

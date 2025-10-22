@@ -8,6 +8,9 @@ using HospitalManagementSystem.Domain.Entities;
 using HospitalManagementSystem.Domain.Repositories;
 using HospitalManagementSystem.Domain.RabbitMQ;
 using HospitalManagementSystem.Domain.Events;
+using HospitalManagementSystem.Domain.Caching;
+using HospitalManagementSystem.Application.Services;
+using HospitalManagementSystem.Domain.Payments;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -18,28 +21,34 @@ namespace HospitalManagementSystem.API.Controllers
     {
         private readonly IPaymentRepository _paymentRepository;
         private readonly IAppointmentRepository _appointmentRepository;
-        private readonly IMedicalRecordRepository _medicalRecordRepository; // Injected
+        private readonly IMedicalRecordRepository _medicalRecordRepository; 
         private readonly IPatientRepository _patientRepository;
         private readonly IRabbitMQService _rabbitMQService;
         private readonly IConfiguration _configuration;
+        private readonly ICacheService _cacheService;
         private readonly ILogger<PaymentsController> _logger;
+        private readonly IStripePaymentService _stripePaymentService;
 
         public PaymentsController(
             IPaymentRepository paymentRepository,
             IAppointmentRepository appointmentRepository,
-            IMedicalRecordRepository medicalRecordRepository, // Injected
+            IMedicalRecordRepository medicalRecordRepository, 
             IPatientRepository patientRepository,
             IRabbitMQService rabbitMQService,
             IConfiguration configuration,
-            ILogger<PaymentsController> logger)
+            ICacheService cacheService,
+            ILogger<PaymentsController> logger,
+            IStripePaymentService stripePaymentService)
         {
             _paymentRepository = paymentRepository;
             _appointmentRepository = appointmentRepository;
-            _medicalRecordRepository = medicalRecordRepository; // Injected
+            _medicalRecordRepository = medicalRecordRepository; 
             _patientRepository = patientRepository;
             _rabbitMQService = rabbitMQService;
             _configuration = configuration;
+            _cacheService = cacheService;
             _logger = logger;
+            _stripePaymentService = stripePaymentService;
         }
 
         [HttpGet("{paymentId}/status")]
@@ -101,7 +110,6 @@ namespace HospitalManagementSystem.API.Controllers
                 }
 
                 Payment payment;
-                Session session;
                 var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:3000";
 
                 if (existingPayment?.Status == PaymentStatuses.Pending && 
@@ -171,43 +179,23 @@ namespace HospitalManagementSystem.API.Controllers
 
                 var createdPayment = await _paymentRepository.CreateAsync(payment);
 
-                // Create new Stripe Checkout Session
-                var options = new SessionCreateOptions
+                var metadata = new Dictionary<string, string>
                 {
-                    PaymentMethodTypes = new List<string> { "card" },
-                    LineItems = new List<SessionLineItemOptions>
-                    {
-                        new SessionLineItemOptions
-                        {
-                            PriceData = new SessionLineItemPriceDataOptions
-                            {
-                                Currency = "vnd",
-                                ProductData = new SessionLineItemPriceDataProductDataOptions
-                                {
-                                    Name = "Phí đặt lịch khám",
-                                    Description = payment.Description,
-                                },
-                                UnitAmount = (long)payment.Amount, 
-                            },
-                            Quantity = 1,
-                        },
-                    },
-                    Mode = "payment",
-                    ExpiresAt = DateTime.UtcNow.AddMinutes(30),
-                    SuccessUrl = $"{baseUrl}/api/payments/success?payment_id={createdPayment.Id}",
-                    CancelUrl = $"{baseUrl}/api/payments/cancel?payment_id={createdPayment.Id}",
-                    CustomerEmail = patient.Email,
-                    Metadata = new Dictionary<string, string>
-                    {
-                        { "payment_id", createdPayment.Id.ToString() },
-                        { "appointment_id", appointment.Id.ToString() },
-                        { "patient_id", appointment.PatientId.ToString() },
-                        { "payment_type", PaymentTypes.BookingFee }
-                    }
+                    { "payment_id", createdPayment.Id.ToString() },
+                    { "appointment_id", appointment.Id.ToString() },
+                    { "patient_id", appointment.PatientId.ToString() },
+                    { "payment_type", PaymentTypes.BookingFee }
                 };
 
-                var newSessionService = new SessionService();
-                session = await newSessionService.CreateAsync(options);
+                var session = await _stripePaymentService.CreateCheckoutSessionAsync(
+                    (long)createdPayment.Amount,
+                    "Phí đặt lịch khám",
+                    payment.Description,
+                    patient.Email,
+                    $"{baseUrl}/api/payments/success?payment_id={createdPayment.Id}",
+                    $"{baseUrl}/api/payments/cancel?payment_id={createdPayment.Id}",
+                    metadata
+                );
 
                 // Update payment with session ID
                 createdPayment.StripeSessionId = session.Id;
@@ -221,7 +209,7 @@ namespace HospitalManagementSystem.API.Controllers
                     PaymentId = createdPayment.Id,
                     CheckoutUrl = session.Url ?? string.Empty,
                     SessionId = session.Id,
-                    ExpiresAt = DateTime.UtcNow.AddMinutes(30) 
+                    ExpiresAt = session.ExpiresAt
                 });
             }
             catch (StripeException ex)
@@ -362,6 +350,10 @@ namespace HospitalManagementSystem.API.Controllers
                             medicalRecord.PaymentStatus = "Unpaid";
                         }
                         await _medicalRecordRepository.UpdateAsync(medicalRecord);
+
+                        // Invalidate cache for the patient's medical records
+                        await _cacheService.RemovePatternAsync($"patient:{medicalRecord.PatientId}:medical-records:*");
+                        _logger.LogInformation("Cleared medical record cache for patient {PatientId} due to webhook payment completion.", medicalRecord.PatientId);
                     }
                 }
 

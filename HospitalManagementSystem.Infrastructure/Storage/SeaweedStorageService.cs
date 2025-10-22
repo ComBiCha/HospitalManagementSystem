@@ -51,7 +51,7 @@ namespace HospitalManagementSystem.Infrastructure.Storage
             if (string.IsNullOrEmpty(publicBase))
                 return assign.Fid;
 
-            return publicBase.TrimEnd('/') + "/" + assign.Fid;
+            return assign.Fid;
         }
 
         public async Task<string> UploadAnyFileAsync(Stream stream, string fileName, string contentType = "application/octet-stream")
@@ -76,7 +76,7 @@ namespace HospitalManagementSystem.Infrastructure.Storage
             if (string.IsNullOrEmpty(publicBase))
                 return assign.Fid;
 
-            return publicBase.TrimEnd('/') + "/" + assign.Fid;
+            return assign.Fid;
         }
         public async Task<Stream?> DownloadAnyFileAsync(string fileId)
         {
@@ -99,9 +99,17 @@ namespace HospitalManagementSystem.Infrastructure.Storage
 
         public async Task<Stream?> DownloadAsync(string fileId)
         {
-            var url = $"http://seaweed-volume:8080/{fileId}";
+            // fileId can be a full URL or just the FID. This handles both cases.
+            string url = fileId.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? fileId
+                : $"http://seaweed-volume:8080/{fileId}";
+
             var resp = await _http.GetAsync(url);
-            if (!resp.IsSuccessStatusCode) return null;
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogError("Failed to download file from SeaweedFS. URL: {Url}, Status: {StatusCode}", url, resp.StatusCode);
+                return null;
+            }
             return await resp.Content.ReadAsStreamAsync();
         }
     }

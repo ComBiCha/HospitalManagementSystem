@@ -33,6 +33,8 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Hangfire.Dashboard;
 using Stripe;
+using HospitalManagementSystem.Infrastructure.Services;
+using HospitalManagementSystem.Domain.Payments;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -76,7 +78,7 @@ builder.Services.AddScoped<CachedPatientRepository>();
 builder.Services.AddScoped<IAuthRepository, AuthRepository>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IDoctorRepository, DoctorRepository>();
-builder.Services.AddHttpClient<IStorageService, SeaweedStorageService>();
+builder.Services.AddScoped<IStorageService, SeaweedStorageService>();
 builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>(); // Add this
 // builder.Services.AddScoped<IBillingRepository, BillingRepository>();
@@ -103,6 +105,7 @@ builder.Services.AddScoped<MedicalRecordApplicationService>();
 builder.Services.AddScoped<AccountantApplicationService>();
 builder.Services.AddScoped<AppointmentApplicationService>();
 builder.Services.AddScoped<AppointmentExaminationService>();
+builder.Services.AddScoped<IStripePaymentService, StripePaymentService>();
 
 // Redis ConnectionMultiplexer
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis");
@@ -182,8 +185,17 @@ builder.Services.AddScoped<IPaymentFactory, PaymentFactory>();
 // builder.Services.AddScoped<IBillingStrategyFactory, BillingStrategyFactory>();
 // builder.Services.AddScoped<InsuranceBillingStrategy>();
 
-builder.Services.AddScoped<EpicFhirIntegrationService>();
-builder.Services.AddScoped<CernerFhirIntegrationService>();
+builder.Services.AddHttpClient<EpicFhirIntegrationService>(client =>
+{
+    var epicConfig = builder.Configuration.GetSection("EpicFhir");
+    var baseUrl = epicConfig["BaseUrl"];
+    if (!string.IsNullOrEmpty(baseUrl))
+    {
+        client.BaseAddress = new Uri(baseUrl);
+    }
+    client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/fhir+json"));
+});
+builder.Services.AddHttpClient<CernerFhirIntegrationService>();
 builder.Services.AddScoped<EhrFhirIntegrationFactory>();
 builder.Services.AddScoped<EhrFhirApplicationService>();
 

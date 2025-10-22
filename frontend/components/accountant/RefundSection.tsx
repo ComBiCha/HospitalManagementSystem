@@ -3,22 +3,39 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import { RefundableMedicalRecordDto } from '@/lib/types'; // Assuming this type is defined
+import { ChevronLeft, ChevronRight, RefreshCw, Filter, X } from 'lucide-react';
+import { RefundableMedicalRecordDto, PaginatedResultDto } from '@/lib/types';
+
+interface FilterState {
+  patientName: string;
+  medicalRecordId: string;
+  startDate: string;
+  endDate: string;
+}
 
 export default function RefundSection() {
   const [records, setRecords] = useState<RefundableMedicalRecordDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [filters, setFilters] = useState<FilterState>({ patientName: '', medicalRecordId: '', startDate: '', endDate: '' });
 
-  const fetchRefundableRecords = useCallback(async (page = 1) => {
+  const fetchRefundableRecords = useCallback(async (page = 1, appliedFilters: FilterState) => {
     setIsLoading(true);
     try {
-      const response = await api.get(`/accountant/refundable-medical-records?page=${page}&pageSize=10`);
-      setRecords(response.data || []);
-      // Assuming pagination data is in headers or needs to be calculated
-      // For now, let's just handle the first page.
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('pageSize', '10');
+      if (appliedFilters.patientName) params.append('patientName', appliedFilters.patientName);
+      if (appliedFilters.medicalRecordId) params.append('medicalRecordId', appliedFilters.medicalRecordId);
+      if (appliedFilters.startDate) params.append('startDate', appliedFilters.startDate);
+      if (appliedFilters.endDate) params.append('endDate', appliedFilters.endDate);
+
+      const response = await api.get(`/accountant/refundable-medical-records`, { params });
+      const data: PaginatedResultDto<RefundableMedicalRecordDto> = response.data;
+      setRecords(data.items || []);
+      setCurrentPage(data.page);
+      setTotalPages(Math.ceil(data.totalCount / data.pageSize));
     } catch (error) {
       console.error('Error fetching refundable records:', error);
       toast.error('Không thể tải danh sách hoàn trả.');
@@ -28,15 +45,37 @@ export default function RefundSection() {
   }, []);
 
   useEffect(() => {
-    fetchRefundableRecords(1);
+    fetchRefundableRecords(1, filters);
   }, [fetchRefundableRecords]);
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleApplyFilters = () => {
+    setCurrentPage(1);
+    fetchRefundableRecords(1, filters);
+  };
+
+  const handleClearFilters = () => {
+    const clearedFilters = { patientName: '', medicalRecordId: '', startDate: '', endDate: '' };
+    setFilters(clearedFilters);
+    setCurrentPage(1);
+    fetchRefundableRecords(1, clearedFilters);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    fetchRefundableRecords(newPage, filters);
+  }
 
   const handleInitiateRefund = async (medicalRecordId: number) => {
     const toastId = toast.loading('Đang tạo yêu cầu hoàn trả...');
     try {
       await api.post(`/accountant/medical-records/${medicalRecordId}/initiate-refund`);
       toast.success('Yêu cầu hoàn trả đã được tạo.');
-      fetchRefundableRecords(currentPage);
+      fetchRefundableRecords(currentPage, filters);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Tạo yêu cầu hoàn trả thất bại.');
     } finally {
@@ -49,7 +88,7 @@ export default function RefundSection() {
     try {
       await api.post(`/accountant/payments/${paymentId}/complete-refund`);
       toast.success('Hoàn trả đã được hoàn tất thành công!');
-      fetchRefundableRecords(currentPage);
+      fetchRefundableRecords(currentPage, filters);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Hoàn tất hoàn trả thất bại.');
     } finally {
@@ -89,6 +128,8 @@ export default function RefundSection() {
         <p className="text-gray-600 mt-1">Quản lý và thực hiện hoàn trả cho các hồ sơ bệnh án đã thanh toán thừa.</p>
       </div>
 
+      <FilterPanel filters={filters} onFilterChange={handleFilterChange} onApply={handleApplyFilters} onClear={handleClearFilters} />
+
       {isLoading ? (
         <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>
       ) : records.length === 0 ? (
@@ -127,7 +168,48 @@ export default function RefundSection() {
         </div>
       )}
 
-      {/* Pagination can be added here if needed */}
+      {totalPages > 1 && <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={handlePageChange} isLoading={isLoading} />}
     </div>
   );
+}
+
+interface FilterPanelProps {
+  filters: FilterState;
+  onFilterChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onApply: () => void;
+  onClear: () => void;
+}
+
+function FilterPanel({ filters, onFilterChange, onApply, onClear }: FilterPanelProps) {
+  return (
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <input type="text" name="patientName" placeholder="Tên bệnh nhân" value={filters.patientName} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+        <input type="number" name="medicalRecordId" placeholder="ID Hồ sơ" value={filters.medicalRecordId} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+        <input type="date" name="startDate" value={filters.startDate} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+        <input type="date" name="endDate" value={filters.endDate} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+      </div>
+      <div className="flex justify-end space-x-2">
+        <button onClick={onClear} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 flex items-center space-x-2"><X className="w-4 h-4" /><span>Xóa bộ lọc</span></button>
+        <button onClick={onApply} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 flex items-center space-x-2"><Filter className="w-4 h-4" /><span>Lọc</span></button>
+      </div>
+    </div>
+  );
+}
+
+interface PaginationProps {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  isLoading: boolean;
+}
+
+function Pagination({ currentPage, totalPages, onPageChange, isLoading }: PaginationProps) {
+  return (
+    <div className="flex items-center justify-between mt-4">
+      <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1 || isLoading} className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"><ChevronLeft className="w-5 h-5 mr-2" />Trước</button>
+      <span className="text-sm text-gray-700">Trang <span className="font-medium">{currentPage}</span> / <span className="font-medium">{totalPages}</span></span>
+      <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages || isLoading} className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed">Sau<ChevronRight className="w-5 h-5 ml-2" /></button>
+    </div>
+  )
 }

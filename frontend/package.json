@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@headlessui/react": "^2.2.9",
     "autoprefixer": "^10.4.16",
     "axios": "^1.6.0",
     "lucide-react": "^0.292.0",

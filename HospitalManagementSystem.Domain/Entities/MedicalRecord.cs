@@ -65,7 +65,9 @@ namespace HospitalManagementSystem.Domain.Entities
         // Navigation properties
         public Appointment Appointment { get; set; } = null!;
         public Patient Patient { get; set; } = null!;
-        public Doctor Doctor { get; set; } = null!;
-        public ICollection<Payment> Payments { get; set; } = new List<Payment>(); // Multiple payments
-    }
-}
+                public Doctor Doctor { get; set; } = null!;
+                public ICollection<Payment> Payments { get; set; } = new List<Payment>(); // Multiple payments
+                public ICollection<ImageInfo> Images { get; set; } = new List<ImageInfo>();
+            }
+        }
+        

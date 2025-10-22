@@ -230,9 +230,6 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("AppointmentId")
-                        .HasColumnType("integer");
-
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -241,9 +238,6 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
-
-                    b.Property<int>("DoctorId")
-                        .HasColumnType("integer");
 
                     b.Property<string>("FileName")
                         .IsRequired()
@@ -258,6 +252,9 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<int>("MedicalRecordId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("MinioObjectKey")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -268,19 +265,15 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
-                    b.Property<int>("PatientId")
-                        .HasColumnType("integer");
+                    b.Property<string>("OrthancInstanceId")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("UploadedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AppointmentId");
-
-                    b.HasIndex("DoctorId");
-
-                    b.HasIndex("PatientId");
+                    b.HasIndex("MedicalRecordId");
 
                     b.ToTable("Images");
                 });
@@ -565,6 +558,9 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DateOfBirth")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Email")
@@ -975,29 +971,13 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
 
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ImageInfo", b =>
                 {
-                    b.HasOne("HospitalManagementSystem.Domain.Entities.Appointment", "Appointment")
-                        .WithMany()
-                        .HasForeignKey("AppointmentId")
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.MedicalRecord", "MedicalRecord")
+                        .WithMany("Images")
+                        .HasForeignKey("MedicalRecordId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("HospitalManagementSystem.Domain.Entities.Doctor", "Doctor")
-                        .WithMany()
-                        .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("HospitalManagementSystem.Domain.Entities.Patient", "Patient")
-                        .WithMany()
-                        .HasForeignKey("PatientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Appointment");
-
-                    b.Navigation("Doctor");
-
-                    b.Navigation("Patient");
+                    b.Navigation("MedicalRecord");
                 });
 
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.MedicalRecord", b =>
@@ -1122,6 +1102,8 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
 
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.MedicalRecord", b =>
                 {
+                    b.Navigation("Images");
+
                     b.Navigation("Payments");
                 });
 

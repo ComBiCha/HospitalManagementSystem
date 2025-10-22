@@ -13,10 +13,10 @@ namespace HospitalManagementSystem.Infrastructure.Cerner
         private readonly HttpClient _httpClient;
         private string? _accessToken;
 
-        public CernerFhirIntegrationService(IConfiguration config, IHttpClientFactory httpClientFactory)
+        public CernerFhirIntegrationService(IConfiguration config, HttpClient httpClient)
         {
             _config = config;
-            _httpClient = httpClientFactory.CreateClient();
+            _httpClient = httpClient;
         }
 
         private async Task EnsureAccessTokenAsync()
@@ -71,6 +71,44 @@ namespace HospitalManagementSystem.Infrastructure.Cerner
         {
             await EnsureAccessTokenAsync();
             return await Task.FromResult(string.Empty);
+        }
+
+        public async Task<(bool, string)> VerifyPatientExistsAsync(string patientId)
+        {
+            try
+            {
+                var patientData = await GetPatientDemographicsAsync(patientId);
+                return (!string.IsNullOrEmpty(patientData), patientId);
+            }
+            catch (Exception)
+            {
+                return (false, string.Empty);
+            }
+        }
+
+        public Task<string> GetMedicationRequestsAsync(string patientId)
+        {
+            return Task.FromResult("{\"resourceType\": \"Bundle\", \"entry\": []}");
+        }
+
+        public Task<string> GetMedicationStatementsAsync(string patientId)
+        {
+            return Task.FromResult("{\"resourceType\": \"Bundle\", \"entry\": []}");
+        }
+
+        public Task<string> GetAllergyIntolerancesAsync(string patientId)
+        {
+            return Task.FromResult("{\"resourceType\": \"Bundle\", \"entry\": []}");
+        }
+
+        public Task<string> GetConditionsAsync(string patientId)
+        {
+            return Task.FromResult("{\"resourceType\": \"Bundle\", \"entry\": []}");
+        }
+
+        public Task<string> GetObservationsAsync(string patientId, string? category = null)
+        {
+            return Task.FromResult("{\"resourceType\": \"Bundle\", \"entry\": []}");
         }
     }
 }

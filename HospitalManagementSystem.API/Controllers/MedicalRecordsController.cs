@@ -195,7 +195,7 @@ namespace HospitalManagementSystem.API.Controllers
 
                 if (!success)
                 {
-                    return NotFound(new { message });
+                    return BadRequest(new { message });
                 }
 
                 return Ok(new { message, success });

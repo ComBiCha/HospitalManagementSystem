@@ -68,6 +68,20 @@ namespace HospitalManagementSystem.Application.Services
                 .ToList();
         }
 
+        public async Task<IEnumerable<AvailableDoctorDto>> GetDoctorsBySpecialtyAsync(string specialty)
+        {
+            var doctors = await _doctorRepository.GetBySpecialtyAsync(specialty);
+            return doctors
+                .Where(d => d.Status.HasFlag(HospitalManagementSystem.Domain.Entities.DoctorStatus.Active))
+                .Select(d => new AvailableDoctorDto
+                {
+                    Id = d.Id,
+                    Name = d.Name,
+                    Specialty = d.Specialty,
+                    Email = d.Email
+                }).ToList();
+        }
+
         public async Task<IEnumerable<TimeSlotDto>> GetAvailableTimeSlotsAsync(DateTime date)
         {
             var timeSlots = new List<TimeSlotDto>();

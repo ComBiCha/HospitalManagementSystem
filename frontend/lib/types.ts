@@ -35,6 +35,7 @@ export interface Patient {
   status: string
   createdAt: string
   updatedAt?: string
+  dateOfBirth?: string;
 }
 
 // Patient Identifier types
@@ -90,6 +91,13 @@ export interface Doctor {
   isOnVacation: boolean
 }
 
+export interface AvailableDoctor {
+  id: number;
+  name: string;
+  specialty: string;
+  email: string;
+}
+
 // Auth types
 export interface LoginRequest {
   username: string
@@ -126,6 +134,22 @@ export interface Paginated<T> {
   pageSize: number;
 }
 
+export interface PaginatedResultDto<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface PagedResult<T> {
+  items: T[];
+  pageNumber: number;
+  totalPages: number;
+  totalCount: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
 // Form types
 export interface UserFormData {
   firstName: string
@@ -136,7 +160,7 @@ export interface UserFormData {
 
 export interface PatientFormData {
   name: string
-  age: number
+  dateOfBirth: string;
   email: string
 }
 

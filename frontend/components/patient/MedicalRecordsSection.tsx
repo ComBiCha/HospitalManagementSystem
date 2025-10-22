@@ -1,37 +1,124 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { MedicalRecord } from '@/lib/types';
+import { MedicalRecord, PagedResult, AvailableDoctor } from '@/lib/types';
 import toast from 'react-hot-toast';
-import { FileText, Calendar, User, Stethoscope, ChevronDown, ChevronUp, AlertCircle, DollarSign } from 'lucide-react';
+import { FileText, ChevronDown, ChevronUp, DollarSign, Filter, X } from 'lucide-react';
+import ImageGallery from '@/components/shared/ImageGallery';
 
 interface MedicalRecordsSectionProps {
   patientId: number | null;
+}
+
+// Define a more specific type for our filter state
+interface FilterState {
+  specialty: string;
+  doctorName: string;
+  startDate: string;
+  endDate: string;
 }
 
 export default function MedicalRecordsSection({ patientId }: MedicalRecordsSectionProps) {
   const [records, setRecords] = useState<MedicalRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedRecordId, setExpandedRecordId] = useState<number | null>(null);
+  
+  // State for filters
+  const [filters, setFilters] = useState<FilterState>({ specialty: '', doctorName: '', startDate: '', endDate: '' });
+  const [specialties, setSpecialties] = useState<string[]>([]);
+  const [doctors, setDoctors] = useState<AvailableDoctor[]>([]);
 
-  useEffect(() => {
-    if (patientId) {
-      fetchMedicalRecords();
-    }
-  }, [patientId]);
+  // State for pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalRecords, setTotalRecords] = useState(0);
 
-  const fetchMedicalRecords = async () => {
+  const fetchMedicalRecords = useCallback(async (page = 1) => {
     if (!patientId) return;
     setIsLoading(true);
     try {
-      const response = await api.get(`/patient-portal/medical-records`);
-      setRecords(response.data || []);
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('pageSize', '10');
+      if (filters.specialty) params.append('specialty', filters.specialty);
+      if (filters.doctorName) params.append('doctorName', filters.doctorName);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+
+      const response = await api.get(`/patient-portal/medical-records`, { params });
+      const result: PagedResult<MedicalRecord> = response.data;
+
+      setRecords(result.items || []);
+      setCurrentPage(result.pageNumber);
+      setTotalPages(result.totalPages);
+      setTotalRecords(result.totalCount);
+
     } catch (error) {
       console.error('Error fetching medical records:', error);
       toast.error('Không thể tải hồ sơ bệnh án.');
     } finally {
       setIsLoading(false);
+    }
+  }, [patientId, filters]);
+
+  useEffect(() => {
+    if (patientId) {
+      fetchMedicalRecords(1);
+    }
+  }, [patientId, fetchMedicalRecords]);
+
+  useEffect(() => {
+    // Fetch specialties on mount
+    const fetchSpecialties = async () => {
+      try {
+        const response = await api.get('/appointmentbooking/specialties');
+        setSpecialties(response.data || []);
+      } catch (error) {
+        console.error('Error fetching specialties:', error);
+      }
+    };
+    fetchSpecialties();
+  }, []);
+
+  useEffect(() => {
+    // Fetch doctors when specialty changes
+    const fetchDoctors = async () => {
+      if (filters.specialty) {
+        try {
+          const response = await api.get(`/appointmentbooking/doctors-by-specialty`, { params: { specialty: filters.specialty } });
+          setDoctors(response.data || []);
+        } catch (error) {
+          console.error('Error fetching doctors:', error);
+        }
+      } else {
+        setDoctors([]);
+      }
+    };
+    fetchDoctors();
+  }, [filters.specialty]);
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+    if (name === 'specialty') {
+      // Reset doctor when specialty changes
+      setFilters(prev => ({ ...prev, doctorName: '' }));
+    }
+  };
+
+  const handleApplyFilters = () => {
+    fetchMedicalRecords(1); // Fetch from page 1 with new filters
+  };
+
+  const handleClearFilters = () => {
+    setFilters({ specialty: '', doctorName: '', startDate: '', endDate: '' });
+    // The fetchMedicalRecords in the useEffect will be triggered by the change in filters
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage > 0 && newPage <= totalPages) {
+      fetchMedicalRecords(newPage);
     }
   };
 
@@ -47,15 +134,6 @@ export default function MedicalRecordsSection({ patientId }: MedicalRecordsSecti
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-4 text-gray-500">Đang tải hồ sơ...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div>
@@ -63,11 +141,25 @@ export default function MedicalRecordsSection({ patientId }: MedicalRecordsSecti
         <p className="text-gray-600 mt-1">Xem lại lịch sử khám và các chi tiết điều trị của bạn.</p>
       </div>
 
-      {records.length === 0 ? (
+      <FilterPanel 
+        filters={filters}
+        specialties={specialties}
+        doctors={doctors}
+        onFilterChange={handleFilterChange}
+        onApply={handleApplyFilters}
+        onClear={handleClearFilters}
+      />
+
+      {isLoading ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-500">Đang tải hồ sơ...</p>
+        </div>
+      ) : records.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
           <FileText className="mx-auto h-16 w-16 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Chưa có hồ sơ</h3>
-          <p className="text-gray-500">Hồ sơ bệnh án của bạn sẽ xuất hiện ở đây sau các lần khám.</p>
+          <p className="text-gray-500">Không tìm thấy hồ sơ bệnh án nào khớp với tiêu chí lọc của bạn.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -103,61 +195,47 @@ export default function MedicalRecordsSection({ patientId }: MedicalRecordsSecti
 
                 {isExpanded && (
                   <div className="border-t border-gray-200 p-6 space-y-6 bg-gray-50">
-                    <div>
-                      <h4 className="font-semibold text-gray-800 mb-2">Chẩn đoán</h4>
-                      <ul className="list-disc list-inside space-y-1 text-gray-700">
-                        {diagnosisList.map((d: any, i: number) => <li key={i}>{d.name} ({d.code})</li>)}
-                      </ul>
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold text-gray-800 mb-2">Phương pháp điều trị</h4>
-                      <p className="text-gray-700 whitespace-pre-wrap">{record.treatment || 'Chưa có phương pháp điều trị.'}</p>
-                    </div>
-
-                    <div>
-                      <h4 className="font-semibold text-gray-800 mb-2">Đơn thuốc và Xét nghiệm</h4>
-                      <div className="space-y-2">
-                        {prescriptionList
-                          .filter((p: any) => p.status !== 'Cancelled' && p.status !== 'CancelRequested')
-                          .map((p: any, i: number) => (
-                            <div key={i} className={`p-3 border rounded-md text-sm ${
-                              p.type === 'drug' ? 'bg-pink-50 border-pink-200' : 'bg-blue-50 border-blue-200'
-                            }`}>
-                              <div className="flex justify-between items-center">
-                                <p className={`font-medium ${
-                                  p.type === 'drug' ? 'text-pink-700' : 'text-blue-700'
-                                }`}>
-                                  {p.name} {p.quantity ? `(Số lượng: ${p.quantity})` : ''}
-                                </p>
-                                <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
-                                    p.status === 'Completed' ? 'bg-teal-100 text-teal-800' :
-                                    p.status === 'Confirmed' ? 'bg-green-100 text-green-800' :
-                                    'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {p.status}
+                    {/* Thông tin hồ sơ bệnh án */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                      <div>
+                        <h4 className="text-md font-bold text-gray-800 mb-2">Chẩn đoán</h4>
+                        {diagnosisList.length === 0 ? (
+                          <p className="text-sm text-gray-500 italic">Chưa có chẩn đoán</p>
+                        ) : (
+                          <ul className="list-disc pl-5 text-sm">
+                            {diagnosisList.map((d: any, idx: number) => (
+                              <li key={idx}>
+                                <span className="font-semibold text-emerald-700">{d.code}</span> - {d.name}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-md font-bold text-gray-800 mb-2">Đơn thuốc & Xét nghiệm</h4>
+                        {prescriptionList.length === 0 ? (
+                          <p className="text-sm text-gray-500 italic">Chưa có đơn thuốc hoặc xét nghiệm</p>
+                        ) : (
+                          <ul className="list-disc pl-5 text-sm">
+                            {prescriptionList.map((p: any, idx: number) => (
+                              <li key={idx}>
+                                <span className={p.type === 'drug' ? 'text-pink-600 font-semibold' : 'text-blue-600 font-semibold'}>
+                                  {p.name}
                                 </span>
-                              </div>
-                            </div>
-                          ))}
+                                {p.type === 'drug' && p.quantity ? ` x${p.quantity}` : ''}
+                                {p.fee ? ` (${p.fee.toLocaleString()}đ)` : ''}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                     </div>
                     <div>
-                      <h4 className="font-semibold text-gray-800 mb-2">Ghi chú của bác sĩ</h4>
-                      <p className="text-gray-700 whitespace-pre-wrap">{record.notes || 'Không có ghi chú.'}</p>
+                      <h4 className="text-md font-bold text-gray-800 mb-2">Ghi chú</h4>
+                      <p className="text-sm text-gray-700">{record.notes || <span className="italic text-gray-400">Không có ghi chú</span>}</p>
                     </div>
-                    <div className="border-t pt-4">
-                      <h4 className="font-semibold text-gray-800 mb-2 flex items-center"><DollarSign className="w-4 h-4 mr-2"/>Chi phí</h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between"><span>Phí khám:</span><span className="font-medium">{record.consultationFee.toLocaleString()}đ</span></div>
-                        <div className="flex justify-between"><span>Phí thuốc:</span><span className="font-medium">{record.medicineFee.toLocaleString()}đ</span></div>
-                        <div className="flex justify-between"><span>Phí xét nghiệm:</span><span className="font-medium">{record.testFee.toLocaleString()}đ</span></div>
-                        <div className="flex justify-between"><span>Phí khác:</span><span className="font-medium">{record.otherFee.toLocaleString()}đ</span></div>
-                        <div className="flex justify-between font-bold border-t pt-2 mt-2"><span>Tổng cộng:</span><span>{record.totalFee.toLocaleString()}đ</span></div>
-                        <div className="flex justify-between"><span>Đã thanh toán:</span><span className="text-green-600 font-medium">{record.paidAmount.toLocaleString()}đ</span></div>
-                        <div className="flex justify-between"><span>Còn lại:</span><span className="text-red-600 font-medium">{(record.totalFee - record.paidAmount).toLocaleString()}đ</span></div>
-                      </div>
-                    </div>
+                    {/* Hình ảnh */}
+                    <ImageGallery medicalRecordId={record.id} />
                   </div>
                 )}
               </div>
@@ -165,6 +243,82 @@ export default function MedicalRecordsSection({ patientId }: MedicalRecordsSecti
           })}
         </div>
       )}
+
+      {totalPages > 1 && (
+        <Pagination 
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
+        />
+      )}
+    </div>
+  );
+}
+
+// Filter Panel Component
+interface FilterPanelProps {
+  filters: FilterState;
+  specialties: string[];
+  doctors: AvailableDoctor[];
+  onFilterChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+  onApply: () => void;
+  onClear: () => void;
+}
+
+function FilterPanel({ filters, specialties, doctors, onFilterChange, onApply, onClear }: FilterPanelProps) {
+  return (
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <select name="specialty" value={filters.specialty} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50">
+          <option value="">Tất cả chuyên khoa</option>
+          {specialties.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select name="doctorName" value={filters.doctorName} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" disabled={!filters.specialty}>
+          <option value="">Tất cả bác sĩ</option>
+          {doctors.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+        </select>
+        <input type="date" name="startDate" value={filters.startDate} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+        <input type="date" name="endDate" value={filters.endDate} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+      </div>
+      <div className="flex justify-end space-x-2">
+        <button onClick={onClear} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 flex items-center space-x-2">
+          <X className="w-4 h-4" />
+          <span>Xóa bộ lọc</span>
+        </button>
+        <button onClick={onApply} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 flex items-center space-x-2">
+          <Filter className="w-4 h-4" />
+          <span>Lọc</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Pagination Component
+interface PaginationProps {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}
+
+function Pagination({ currentPage, totalPages, onPageChange }: PaginationProps) {
+  return (
+    <div className="flex justify-center items-center space-x-2 mt-6">
+      <button 
+        onClick={() => onPageChange(currentPage - 1)} 
+        disabled={currentPage <= 1}
+        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Trước
+      </button>
+      <span className="text-sm text-gray-600">Trang {currentPage} / {totalPages}</span>
+      <button 
+        onClick={() => onPageChange(currentPage + 1)} 
+        disabled={currentPage >= totalPages}
+        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Sau
+      </button>
     </div>
   );
 }

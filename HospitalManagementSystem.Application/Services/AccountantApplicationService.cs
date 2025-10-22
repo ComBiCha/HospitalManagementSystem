@@ -11,6 +11,12 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Text.Json;
+using HospitalManagementSystem.Domain.Caching;
+using Microsoft.Extensions.Logging;
+using HospitalManagementSystem.Application.DTOs.Accountant;
+using HospitalManagementSystem.Domain.Specifications;
+using Microsoft.EntityFrameworkCore;
+using HospitalManagementSystem.Domain.Payments;
 
 namespace HospitalManagementSystem.Application.Services
 {
@@ -23,6 +29,9 @@ namespace HospitalManagementSystem.Application.Services
         private readonly HospitalDbContext _context;
         private readonly IRabbitMQService _rabbitMQService;
         private readonly IConfiguration _configuration;
+        private readonly ICacheService _cacheService;
+        private readonly ILogger<AccountantApplicationService> _logger;
+        private readonly IStripePaymentService _stripePaymentService;
 
         public AccountantApplicationService(
             IMedicalRecordRepository medicalRecordRepository, 
@@ -31,7 +40,10 @@ namespace HospitalManagementSystem.Application.Services
             IAppointmentRepository appointmentRepository,
             HospitalDbContext context, 
             IRabbitMQService rabbitMQService,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            ICacheService cacheService,
+            ILogger<AccountantApplicationService> logger,
+            IStripePaymentService stripePaymentService)
         {
             _medicalRecordRepository = medicalRecordRepository;
             _paymentRepository = paymentRepository;
@@ -40,13 +52,43 @@ namespace HospitalManagementSystem.Application.Services
             _context = context;
             _rabbitMQService = rabbitMQService;
             _configuration = configuration;
+            _cacheService = cacheService;
+            _logger = logger;
+            _stripePaymentService = stripePaymentService;
         }
 
         #region Eligible Appointments for Deposit
 
-        public async Task<PaginatedResultDto<EligibleAppointmentDto>> GetEligibleForDepositAppointmentsAsync(int page, int pageSize)
+        public async Task<PaginatedResultDto<EligibleAppointmentDto>> GetEligibleForDepositAppointmentsAsync(AccountantFilterDto filter, int page, int pageSize)
         {
-            var (appointments, totalCount) = await _appointmentRepository.GetEligibleForDepositAppointmentsAsync(page, pageSize);
+            ISpecification<Appointment> spec = new EligibleForDepositSpecification();
+
+            if (!string.IsNullOrEmpty(filter.PatientName))
+            {
+                spec = spec.And(new AppointmentByPatientNameSpecification(filter.PatientName));
+            }
+
+            if (filter.AppointmentId.HasValue)
+            {
+                spec = spec.And(new AppointmentByIdSpecification(filter.AppointmentId.Value));
+            }
+
+            if (filter.StartDate.HasValue)
+            {
+                var startDateUtc = DateTime.SpecifyKind(filter.StartDate.Value.Date, DateTimeKind.Utc);
+                var endDateUtc = (filter.EndDate.HasValue ? filter.EndDate.Value.Date : DateTime.UtcNow.Date).AddDays(1).AddTicks(-1);
+                endDateUtc = DateTime.SpecifyKind(endDateUtc, DateTimeKind.Utc);
+                spec = spec.And(new AppointmentByDateRangeSpecification(startDateUtc, endDateUtc));
+            }
+
+            var query = _appointmentRepository.GetQueryable(spec);
+            var totalCount = await query.CountAsync();
+
+            var appointments = await query
+                .OrderByDescending(a => a.Date)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
 
             var dtos = new List<EligibleAppointmentDto>();
 
@@ -194,48 +236,28 @@ namespace HospitalManagementSystem.Application.Services
                     throw new InvalidOperationException("No advance payment suggestion found for this appointment's specialty.");
                 }
 
-                var paymentDto = await InitiateAdvancePaymentAsync(appointmentId, "Stripe", suggestedAmount, false); // Don't start a new transaction
+                var paymentDto = await InitiateAdvancePaymentAsync(appointmentId, "Stripe", suggestedAmount, false);
 
                 var patient = await _patientRepository.GetPatientByIdAsync(paymentDto.PatientId);
                 var appointment = await _appointmentRepository.GetByIdAsync(appointmentId);
 
-                var expiresAt = DateTime.UtcNow.AddMinutes(30);
                 var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:3000";
-                var options = new SessionCreateOptions
+                var metadata = new Dictionary<string, string>
                 {
-                    PaymentMethodTypes = new List<string> { "card" },
-                    LineItems = new List<SessionLineItemOptions>
-                    {
-                        new SessionLineItemOptions
-                        {
-                            PriceData = new SessionLineItemPriceDataOptions
-                            {
-                                Currency = "vnd",
-                                ProductData = new SessionLineItemPriceDataProductDataOptions
-                                {
-                                    Name = $"Advance Payment for Appointment #{appointmentId}",
-                                    Description = $"Advance payment for appointment with Dr. {appointment.Doctor.Name} on {appointment.Date:yyyy-MM-dd}",
-                                },
-                                UnitAmount = (long)paymentDto.Amount,
-                            },
-                            Quantity = 1,
-                        },
-                    },
-                    Mode = "payment",
-                    ExpiresAt = expiresAt,
-                    SuccessUrl = $"{baseUrl}/payment-success.html",
-                    CancelUrl = $"{baseUrl}/payment-cancelled.html",
-                    CustomerEmail = patient.Email,
-                    Metadata = new Dictionary<string, string>
-                    {
-                        { "payment_id", paymentDto.Id.ToString() },
-                        { "appointment_id", appointmentId.ToString() },
-                        { "payment_type", PaymentTypes.Deposit }
-                    }
+                    { "payment_id", paymentDto.Id.ToString() },
+                    { "appointment_id", appointmentId.ToString() },
+                    { "payment_type", PaymentTypes.Deposit }
                 };
 
-                var service = new SessionService();
-                var newSession = await service.CreateAsync(options);
+                var newSession = await _stripePaymentService.CreateCheckoutSessionAsync(
+                    (long)paymentDto.Amount,
+                    $"Advance Payment for Appointment #{appointmentId}",
+                    $"Advance payment for appointment with Dr. {appointment.Doctor.Name} on {appointment.Date:yyyy-MM-dd}",
+                    patient.Email,
+                    $"{baseUrl}/payment-success.html",
+                    $"{baseUrl}/payment-cancelled.html",
+                    metadata
+                );
 
                 var paymentToUpdate = await _paymentRepository.GetByIdAsync(paymentDto.Id);
                 paymentToUpdate.StripeSessionId = newSession.Id;
@@ -247,7 +269,7 @@ namespace HospitalManagementSystem.Application.Services
                 {
                     PaymentId = paymentDto.Id,
                     StripeCheckoutUrl = newSession.Url,
-                    ExpiresAt = expiresAt
+                    ExpiresAt = newSession.ExpiresAt
                 };
             }
             catch (Exception)
@@ -322,12 +344,39 @@ namespace HospitalManagementSystem.Application.Services
         #endregion
 
         #region Final Payment
-        public async Task<IEnumerable<UnpaidMedicalRecordDto>> GetUnpaidMedicalRecordsAsync(int page, int pageSize)
+        public async Task<PaginatedResultDto<UnpaidMedicalRecordDto>> GetUnpaidMedicalRecordsAsync(AccountantFilterDto filter, int page, int pageSize)
         {
-            var medicalRecords = await _medicalRecordRepository.GetUnpaidMedicalRecordsAsync(page, pageSize);
-            var dtos = new List<UnpaidMedicalRecordDto>();
+            ISpecification<MedicalRecord> spec = new UnpaidMedicalRecordSpecification();
 
-            foreach (var mr in medicalRecords.Where(mr => mr.PaidAmount < mr.TotalFee))
+            if (!string.IsNullOrEmpty(filter.PatientName))
+            {
+                spec = spec.And(new MedicalRecordByPatientNameSpecification(filter.PatientName));
+            }
+
+            if (filter.MedicalRecordId.HasValue)
+            {
+                spec = spec.And(new MedicalRecordByIdSpecification(filter.MedicalRecordId.Value));
+            }
+
+            if (filter.StartDate.HasValue)
+            {
+                var startDateUtc = DateTime.SpecifyKind(filter.StartDate.Value.Date, DateTimeKind.Utc);
+                var endDateUtc = (filter.EndDate.HasValue ? filter.EndDate.Value.Date : filter.StartDate.Value.Date).AddDays(1).AddTicks(-1);
+                endDateUtc = DateTime.SpecifyKind(endDateUtc, DateTimeKind.Utc);
+                spec = spec.And(new MedicalRecordByDateRangeSpecification(startDateUtc, endDateUtc));
+            }
+
+            var query = _medicalRecordRepository.GetQueryable(spec);
+            var totalCount = await query.CountAsync();
+
+            var medicalRecords = await query
+                .OrderByDescending(mr => mr.Appointment.Date)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            var dtos = new List<UnpaidMedicalRecordDto>();
+            foreach (var mr in medicalRecords)
             {
                 var pendingPayment = await _paymentRepository.GetPendingPaymentByMedicalRecordIdAsync(mr.Id);
                 dtos.Add(new UnpaidMedicalRecordDto
@@ -346,7 +395,14 @@ namespace HospitalManagementSystem.Application.Services
                     PendingPaymentMethod = pendingPayment?.PaymentMethod
                 });
             }
-            return dtos;
+
+            return new PaginatedResultDto<UnpaidMedicalRecordDto>
+            {
+                Items = dtos,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize
+            };
         }
 
         public async Task<PaymentDto> InitiateCashPaymentForMedicalRecordAsync(int medicalRecordId)
@@ -370,7 +426,7 @@ namespace HospitalManagementSystem.Application.Services
                 {
                     PatientId = medicalRecord.PatientId,
                     MedicalRecordId = medicalRecord.Id,
-                    Amount = medicalRecord.RemainingAmount, // Use RemainingAmount
+                    Amount = medicalRecord.RemainingAmount, 
                     PaymentType = PaymentTypes.FinalPayment,
                     PaymentMethod = "Cash",
                     Status = PaymentStatuses.Pending,
@@ -462,43 +518,23 @@ namespace HospitalManagementSystem.Application.Services
 
                 var createdPayment = await _paymentRepository.CreateAsync(payment);
 
-                var expiresAt = DateTime.UtcNow.AddMinutes(30);
                 var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:3000";
-                var options = new SessionCreateOptions
+                var metadata = new Dictionary<string, string>
                 {
-                    PaymentMethodTypes = new List<string> { "card" },
-                    LineItems = new List<SessionLineItemOptions>
-                    {
-                        new SessionLineItemOptions
-                        {
-                            PriceData = new SessionLineItemPriceDataOptions
-                            {
-                                Currency = "vnd",
-                                ProductData = new SessionLineItemPriceDataProductDataOptions
-                                {
-                                    Name = $"Hospital Fee for Medical Record #{medicalRecord.Id}",
-                                    Description = $"Payment for services related to patient {patient.Name} on {medicalRecord.Appointment.Date:yyyy-MM-dd}",
-                                },
-                                UnitAmount = (long)createdPayment.Amount,
-                            },
-                            Quantity = 1,
-                        },
-                    },
-                    Mode = "payment",
-                    ExpiresAt = expiresAt,
-                    SuccessUrl = $"{baseUrl}/payment-success.html",
-                    CancelUrl = $"{baseUrl}/payment-cancelled.html",
-                    CustomerEmail = patient.Email,
-                    Metadata = new Dictionary<string, string>
-                    {
-                        { "payment_id", createdPayment.Id.ToString() },
-                        { "medical_record_id", medicalRecord.Id.ToString() },
-                        { "payment_type", PaymentTypes.FinalPayment }
-                    }
+                    { "payment_id", createdPayment.Id.ToString() },
+                    { "medical_record_id", medicalRecord.Id.ToString() },
+                    { "payment_type", PaymentTypes.FinalPayment }
                 };
 
-                var service = new SessionService();
-                var newSession = await service.CreateAsync(options);
+                var newSession = await _stripePaymentService.CreateCheckoutSessionAsync(
+                    (long)createdPayment.Amount,
+                    $"Hospital Fee for Medical Record #{medicalRecord.Id}",
+                    $"Payment for services related to patient {patient.Name} on {medicalRecord.Appointment.Date:yyyy-MM-dd}",
+                    patient.Email,
+                    $"{baseUrl}/payment-success.html",
+                    $"{baseUrl}/payment-cancelled.html",
+                    metadata
+                );
 
                 createdPayment.StripeSessionId = newSession.Id;
                 await _paymentRepository.UpdateAsync(createdPayment);
@@ -509,7 +545,7 @@ namespace HospitalManagementSystem.Application.Services
                 {
                     PaymentId = createdPayment.Id,
                     StripeCheckoutUrl = newSession.Url,
-                    ExpiresAt = expiresAt
+                    ExpiresAt = newSession.ExpiresAt
                 };
             }
             catch (Exception)
@@ -566,6 +602,10 @@ namespace HospitalManagementSystem.Application.Services
                             medicalRecord.PaymentStatus = "Unpaid";
                         }
                         await _medicalRecordRepository.UpdateAsync(medicalRecord);
+
+                        // Invalidate cache for the patient's medical records
+                        await _cacheService.RemovePatternAsync($"patient:{medicalRecord.PatientId}:medical-records:*");
+                        _logger.LogInformation("Cleared medical record cache for patient {PatientId} due to cash payment confirmation.", medicalRecord.PatientId);
                     }
                 }
 
@@ -638,11 +678,38 @@ namespace HospitalManagementSystem.Application.Services
 
         #region Refund Management
 
-        public async Task<IEnumerable<RefundableMedicalRecordDto>> GetRefundableMedicalRecordsAsync(int page, int pageSize)
+        public async Task<PaginatedResultDto<RefundableMedicalRecordDto>> GetRefundableMedicalRecordsAsync(AccountantFilterDto filter, int page, int pageSize)
         {
-            var medicalRecords = await _medicalRecordRepository.GetRefundableMedicalRecordsAsync(page, pageSize);
-            var dtos = new List<RefundableMedicalRecordDto>();
+            ISpecification<MedicalRecord> spec = new RefundableMedicalRecordSpecification();
 
+            if (!string.IsNullOrEmpty(filter.PatientName))
+            {
+                spec = spec.And(new MedicalRecordByPatientNameSpecification(filter.PatientName));
+            }
+
+            if (filter.MedicalRecordId.HasValue)
+            {
+                spec = spec.And(new MedicalRecordByIdSpecification(filter.MedicalRecordId.Value));
+            }
+
+            if (filter.StartDate.HasValue)
+            {
+                var startDateUtc = DateTime.SpecifyKind(filter.StartDate.Value.Date, DateTimeKind.Utc);
+                var endDateUtc = (filter.EndDate.HasValue ? filter.EndDate.Value.Date : filter.StartDate.Value.Date).AddDays(1).AddTicks(-1);
+                endDateUtc = DateTime.SpecifyKind(endDateUtc, DateTimeKind.Utc);
+                spec = spec.And(new MedicalRecordByDateRangeSpecification(startDateUtc, endDateUtc));
+            }
+
+            var query = _medicalRecordRepository.GetQueryable(spec);
+            var totalCount = await query.CountAsync();
+
+            var medicalRecords = await query
+                .OrderByDescending(mr => mr.Appointment.Date)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            var dtos = new List<RefundableMedicalRecordDto>();
             foreach (var mr in medicalRecords)
             {
                 var refundPayment = await _paymentRepository.GetPendingPaymentByMedicalRecordIdAsync(mr.Id);
@@ -661,7 +728,14 @@ namespace HospitalManagementSystem.Application.Services
                     RefundPaymentStatus = refundPayment?.Status
                 });
             }
-            return dtos;
+
+            return new PaginatedResultDto<RefundableMedicalRecordDto>
+            {
+                Items = dtos,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize
+            };
         }
 
         public async Task<PaymentDto> InitiateRefundPaymentAsync(int medicalRecordId)
@@ -747,6 +821,10 @@ namespace HospitalManagementSystem.Application.Services
                             medicalRecord.PaymentStatus = "Paid";
                         }
                         await _medicalRecordRepository.UpdateAsync(medicalRecord);
+
+                        // Invalidate cache for the patient's medical records
+                        await _cacheService.RemovePatternAsync($"patient:{medicalRecord.PatientId}:medical-records:*");
+                        _logger.LogInformation("Cleared medical record cache for patient {PatientId} due to refund completion.", medicalRecord.PatientId);
                     }
                 }
 
@@ -763,4 +841,3 @@ namespace HospitalManagementSystem.Application.Services
         #endregion
     }
 }
-

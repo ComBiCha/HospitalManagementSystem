@@ -36,6 +36,21 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
+        [HttpGet("doctors-by-specialty")]
+        public async Task<ActionResult<IEnumerable<AvailableDoctorDto>>> GetDoctorsBySpecialty([FromQuery] string specialty)
+        {
+            try
+            {
+                var doctors = await _appointmentService.GetDoctorsBySpecialtyAsync(specialty);
+                return Ok(doctors);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting doctors for specialty {Specialty}", specialty);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
         [HttpGet("available-slots")]
         public async Task<ActionResult<IEnumerable<TimeSlotDto>>> GetAvailableTimeSlots([FromQuery] DateTime date)
         {

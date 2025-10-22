@@ -9,6 +9,7 @@ using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
 using System.Text.RegularExpressions;
 using System.Xml;
+using Microsoft.Extensions.Logging;
 
 
 namespace HospitalManagementSystem.Infrastructure.Epic
@@ -17,22 +18,20 @@ namespace HospitalManagementSystem.Infrastructure.Epic
     {
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _config;
+        private readonly ILogger<EpicFhirIntegrationService> _logger; // Declared logger
         private readonly string _clientId;
         private readonly string _tokenUrl;
         private readonly string _privateKeyPath;
 
-        public EpicFhirIntegrationService(HttpClient httpClient, IConfiguration config)
+        public EpicFhirIntegrationService(HttpClient httpClient, IConfiguration config, ILogger<EpicFhirIntegrationService> logger)
         {
             _httpClient = httpClient;
             _config = config;
+            _logger = logger; // Assign logger
             var epicConfig = _config.GetSection("EpicFhir");
             _clientId = epicConfig["ClientId"] ?? throw new ArgumentNullException("EpicFhir:ClientId missing");
-            _tokenUrl = epicConfig["TokenUrl"] ?? throw new ArgumentNullException("EpicFhir:TokenUrl missing");
+            _tokenUrl = epicConfig["TokenUrl"] ?? throw new ArgumentNullException("EpicFhir:TokenUrlUrl missing");
             _privateKeyPath = epicConfig["PrivateKeyPath"] ?? throw new ArgumentNullException("EpicFhir:PrivateKeyPath missing");
-
-            var baseUrl = epicConfig["BaseUrl"];
-            if (!string.IsNullOrEmpty(baseUrl))
-                _httpClient.BaseAddress = new Uri(baseUrl);
         }
 
         private async Task<string> GetAccessTokenAsync()
@@ -89,8 +88,7 @@ namespace HospitalManagementSystem.Infrastructure.Epic
                 Console.WriteLine($"Epic token request failed: {response.StatusCode} - {responseBody}");
                 throw new Exception($"Epic token request failed: {response.StatusCode} - {responseBody}");
             }
-            var json = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(responseBody);
             var accessToken = doc.RootElement.GetProperty("access_token").GetString();
             return accessToken!;
         }
@@ -101,14 +99,22 @@ namespace HospitalManagementSystem.Infrastructure.Epic
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
 
-        public async Task<string> GetPatientDemographicsAsync(string patientId)
+        public async Task<string?> GetPatientDemographicsAsync(string patientId)
         {
             await EnsureAccessTokenAsync();
             var response = await _httpClient.GetAsync($"Patient/{patientId}");
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning("Patient with ID {PatientId} not found in Epic.", patientId);
+                return null;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();
-                throw new Exception($"Epic token request failed: {response.StatusCode} - {error}");
+                _logger.LogError("Epic FHIR request for Patient/{PatientId} failed with status {StatusCode}: {Error}", patientId, response.StatusCode, error);
+                throw new Exception($"Epic FHIR request failed: {response.StatusCode} - {error}");
             }
             return await response.Content.ReadAsStringAsync();
         }
@@ -143,6 +149,82 @@ namespace HospitalManagementSystem.Infrastructure.Epic
                 throw new Exception($"Epic search patients request failed: {response.StatusCode} - {error}");
             }
             return await response.Content.ReadAsStringAsync();
+        }
+
+        public async Task<(bool, string)> VerifyPatientExistsAsync(string patientId)
+        {
+            await EnsureAccessTokenAsync();
+            var response = await _httpClient.GetAsync($"Patient/{patientId}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                var json = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
+                var nameArray = doc.RootElement.GetProperty("name")[0];
+                var familyName = nameArray.GetProperty("family").GetString();
+                var givenName = nameArray.GetProperty("given")[0].GetString();
+                return (true, $"{givenName} {familyName}");
+            }
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return (false, null);
+            }
+
+            var errorContent = await response.Content.ReadAsStringAsync();
+            throw new Exception($"Error verifying patient from Epic: {response.StatusCode} - {errorContent}");
+        }
+
+        private async Task<string> GetFhirResourceByPatientAsync(string resourceType, string patientId, string? query = null)
+        {
+            await EnsureAccessTokenAsync();
+            var requestUri = $"{resourceType}?patient={patientId}";
+            if (!string.IsNullOrEmpty(query))
+            {
+                requestUri += $"&{query}";
+            }
+            var response = await _httpClient.GetAsync(requestUri);
+            if (!response.IsSuccessStatusCode)
+            {
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    _logger.LogWarning("FHIR resource {ResourceType} for patient {PatientId} not found (404). Returning empty array.", resourceType, patientId);
+                    return "[]"; // Return empty JSON array for 404s
+                }
+                var error = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Epic FHIR request for {resourceType} failed: {response.StatusCode} - {error}");
+            }
+            return await response.Content.ReadAsStringAsync();
+        }
+
+        public Task<string> GetMedicationRequestsAsync(string patientId)
+        {
+            return GetFhirResourceByPatientAsync("MedicationRequest", patientId);
+        }
+
+        public Task<string> GetMedicationStatementsAsync(string patientId)
+        {
+            return GetFhirResourceByPatientAsync("MedicationStatement", patientId);
+        }
+
+        public Task<string> GetAllergyIntolerancesAsync(string patientId)
+        {
+            return GetFhirResourceByPatientAsync("AllergyIntolerance", patientId);
+        }
+
+        public Task<string> GetConditionsAsync(string patientId)
+        {
+            return GetFhirResourceByPatientAsync("Condition", patientId);
+        }
+
+        public Task<string> GetObservationsAsync(string patientId, string? category = null)
+        {
+            string? query = null;
+            if (!string.IsNullOrEmpty(category))
+            {
+                query = $"category={category}";
+            }
+            return GetFhirResourceByPatientAsync("Observation", patientId, query);
         }
     }
 }

@@ -4,6 +4,10 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
+import DicomViewer from '@/components/doctor/DicomViewer';
+import ImageGallery from '@/components/shared/ImageGallery';
+import ImageUpload from '@/components/doctor/ImageUpload';
+import ExternalHistoryPanel from '@/components/doctor/ExternalHistoryPanel';
 import {
   User,
   Calendar,
@@ -17,6 +21,7 @@ import {
   ArrowLeft,
   Search,
   X,
+  DownloadCloud,
 } from 'lucide-react';
 
 interface MedicalRecord {
@@ -79,6 +84,14 @@ interface MedicalRecordHistoryItem {
   createdAt: string;
 }
 
+interface ExternalPatientHistoryDto {
+    medicationRequests: string;
+    medicationStatements: string;
+    allergyIntolerances: string;
+    conditions: string;
+    observations: string;
+}
+
 const formatDateTimeToVN = (dateString?: string) => {
   if (!dateString) return '';
   try {
@@ -103,6 +116,15 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isReadOnly, setIsReadOnly] = useState(false);
+
+  // Derived fhirId
+  const fhirId = medicalRecord?.patient?.patientIdentifiers?.find(
+    (id: any) => id.ehrSystem === 0 // 0 is Epic
+  )?.externalId;
+
+  // External History State
+  const [externalHistory, setExternalHistory] = useState<ExternalPatientHistoryDto | null>(null);
+  const [isFetchingExternal, setIsFetchingExternal] = useState(false);
 
   // Reference data
   const [diagnoses, setDiagnoses] = useState<ReferenceItem[]>([]);
@@ -215,6 +237,32 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
       toast.error(error.response?.data?.message || 'Không thể tải dữ liệu!');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleFetchExternalHistory = async (resources: string[]) => {
+    if (!fhirId) {
+        toast.error("Patient does not have a linked Epic identifier.");
+        return;
+    }
+    if (resources.length === 0) {
+        toast.error("Please select at least one resource type to fetch.");
+        return;
+    }
+
+    setIsFetchingExternal(true);
+    setExternalHistory(null); // Clear previous history
+    try {
+        const params = new URLSearchParams();
+        resources.forEach(resource => params.append('resourceTypes', resource));
+        const response = await api.get(`/FhirEpic/patient/${fhirId}/external-history-selective?${params.toString()}`);
+        setExternalHistory(response.data);
+        toast.success("Successfully imported external history from Epic.");
+    } catch (error) {
+        console.error("Error fetching external history:", error);
+        toast.error("Failed to import external history.");
+    } finally {
+        setIsFetchingExternal(false);
     }
   };
 
@@ -386,7 +434,7 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
             <span>Quay lại danh sách</span>
           </button>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
             {/* Patient Info */}
             <div className="flex items-center space-x-4">
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
@@ -410,22 +458,34 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
               </p>
             </div>
 
-            {/* Status */}
-            <div>
-              <p className="text-sm text-gray-500">Trạng thái</p>
-              <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold mt-1 ${
-                medicalRecord.appointment?.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                medicalRecord.appointment?.status === 'Hospitalized' ? 'bg-purple-100 text-purple-700' :
-                'bg-blue-100 text-blue-700'
-              }`}>
-                {medicalRecord.appointment?.status === 'InProgress' ? 'Đang khám' :
-                 medicalRecord.appointment?.status === 'Completed' ? 'Hoàn thành' :
-                 medicalRecord.appointment?.status === 'Hospitalized' ? 'Nhập viện' :
-                 medicalRecord.appointment?.status}
-              </span>
+            {/* Status & Action */}
+            <div className="space-y-2">
+                <p className="text-sm text-gray-500">Trạng thái</p>
+                <span className={`inline-block px-4 py-2 rounded-full text-sm font-semibold mt-1 ${
+                    medicalRecord.appointment?.status === 'Completed' ? 'bg-green-100 text-green-700' :
+                    medicalRecord.appointment?.status === 'Hospitalized' ? 'bg-purple-100 text-purple-700' :
+                    'bg-blue-100 text-blue-700'
+                }`}>
+                    {medicalRecord.appointment?.status === 'InProgress' ? 'Đang khám' :
+                    medicalRecord.appointment?.status === 'Completed' ? 'Hoàn thành' :
+                    medicalRecord.appointment?.status === 'Hospitalized' ? 'Nhập viện' :
+                    medicalRecord.appointment?.status}
+                </span>
             </div>
+
           </div>
         </div>
+
+        {/* External History Panel */}
+        {fhirId && (
+            <div className="mb-6">
+                <ExternalHistoryPanel 
+                    onFetchHistory={handleFetchExternalHistory} 
+                    history={externalHistory} 
+                    isLoading={isFetchingExternal} 
+                />
+            </div>
+        )}
 
         {/* Main Form */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -822,6 +882,16 @@ export default function ExaminationPage({ params }: { params: { id: string } }) 
                 className="w-full p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
                 disabled={isReadOnly}
               />
+            </div>
+
+            {/* Dicom/Image Section */}
+            <div className="bg-white rounded-2xl shadow-xl p-6">
+              <ImageGallery medicalRecordId={medicalRecord.id} />
+              {!isReadOnly && (
+                <div className="mt-6">
+                  <ImageUpload medicalRecordId={medicalRecord.id} onUploadSuccess={fetchData} />
+                </div>
+              )}
             </div>
           </div>
 

@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { PatientIdentifier, PatientIdentifierFormData } from '@/lib/types';
@@ -42,6 +40,29 @@ export default function IdentifiersSection({ patientId }: IdentifiersSectionProp
   const handleAdd = async () => {
     if (!patientId) return;
     setIsLoading(true);
+
+    if (formData.ehrSystem === 0) {
+      try {
+        const response = await api.get('/patients/verify-ehr-id', {
+          params: {
+            ehrSystem: 'Epic',
+            patientId: formData.externalId,
+          },
+        });
+
+        if (!response.data.isValid) {
+          toast.error("Không tìm thấy bệnh nhân trên hệ thống Epic.");
+          setIsLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.error("Error verifying identifier:", error);
+        toast.error("Lỗi khi kiểm tra định danh trên Epic.");
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       const payload = {
         EHRSystem: formData.ehrSystem,
@@ -64,6 +85,29 @@ export default function IdentifiersSection({ patientId }: IdentifiersSectionProp
   const handleUpdate = async (id: number) => {
     if (!patientId) return;
     setIsLoading(true);
+
+    if (formData.ehrSystem === 0) {
+      try {
+        const response = await api.get('/patients/verify-ehr-id', {
+          params: {
+            ehrSystem: 'Epic',
+            patientId: formData.externalId,
+          },
+        });
+
+        if (!response.data.isValid) {
+          toast.error("Không tìm thấy bệnh nhân trên hệ thống Epic.");
+          setIsLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.error("Error verifying identifier:", error);
+        toast.error("Lỗi khi kiểm tra định danh trên Epic.");
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       const payload = {
         Id: id,

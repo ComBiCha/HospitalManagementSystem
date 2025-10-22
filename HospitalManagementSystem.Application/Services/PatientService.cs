@@ -18,10 +18,14 @@ public class PatientService
 
     public async Task<Patient> CreatePatientAsync(PatientCreateDto dto)
     {
+        var dateOfBirthUtc = dto.DateOfBirth.HasValue
+            ? DateTime.SpecifyKind(dto.DateOfBirth.Value, DateTimeKind.Utc)
+            : (DateTime?)null;
+
         var patient = new Patient
         {
             Name = dto.Name,
-            Age = dto.Age,
+            DateOfBirth = dateOfBirthUtc,
             Email = dto.Email,
             CreatedAt = DateTime.UtcNow,
             PatientIdentifiers = dto.Identifiers.Select(x => new PatientIdentifiers
@@ -34,6 +38,27 @@ public class PatientService
         };
 
         return await _patientRepository.CreatePatientAsync(patient);
+    }
+
+    public async Task<Patient> CreatePatientFromEpicImportAsync(ConfirmPatientImportDto dto)
+    {
+        var patientCreateDto = new PatientCreateDto
+        {
+            Name = $"{dto.FirstName} {dto.LastName}",
+            Email = dto.Email,
+            DateOfBirth = dto.DateOfBirth,
+            Identifiers = new List<PatientIdentifierDto>
+            {
+                new PatientIdentifierDto
+                {
+                    EHRSystem = EHRSystem.Epic,
+                    ExternalId = dto.EpicPatientId,
+                    IdentifierType = "FHIR"
+                }
+            }
+        };
+
+        return await CreatePatientAsync(patientCreateDto);
     }
 
     public async Task<List<PatientIdentifiers>> GetPatientIdentifiersAsync(int patientId)

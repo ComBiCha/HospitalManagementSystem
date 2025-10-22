@@ -90,6 +90,8 @@ export default function PatientPortal() {
       if (userData.patientId) {
         const patientResponse = await api.get(`/patients/${userData.patientId}`);
         setPatient(patientResponse.data);
+      } else {
+        setPatient(null); // Ensure patient is null if no ID
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -99,6 +101,13 @@ export default function PatientPortal() {
     }
   };
 
+  // If no patient profile, force to profile section
+  useEffect(() => {
+    if (!isLoading && !patient) {
+      setActiveSection('profile');
+    }
+  }, [isLoading, patient]);
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
@@ -107,6 +116,11 @@ export default function PatientPortal() {
   };
 
   const renderSection = () => {
+    // If no patient record, only allow profile access
+    if (!patient && activeSection !== 'profile' && activeSection !== 'settings') {
+        return <ProfileSection user={user} patient={patient} onRefresh={fetchUserData} />;
+    }
+
     switch (activeSection) {
       case 'profile':
         return <ProfileSection user={user} patient={patient} onRefresh={fetchUserData} />;
@@ -124,6 +138,11 @@ export default function PatientPortal() {
         return <ProfileSection user={user} patient={patient} onRefresh={fetchUserData} />;
     }
   };
+
+  const visibleSidebarItems = patient
+    ? sidebarItems
+    : sidebarItems.filter(item => item.id === 'profile' || item.id === 'settings');
+
 
   if (isLoading) {
     return (
@@ -162,7 +181,7 @@ export default function PatientPortal() {
 
           {/* Navigation */}
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {sidebarItems.map((item) => {
+            {visibleSidebarItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeSection === item.id;
               return (

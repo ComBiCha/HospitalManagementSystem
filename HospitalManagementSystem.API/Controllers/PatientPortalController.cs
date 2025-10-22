@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.Application.DTOs.Appointment;
+using HospitalManagementSystem.Application.DTOs.MedicalRecord;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -21,7 +22,7 @@ namespace HospitalManagementSystem.API.Controllers
         }
 
         [HttpGet("medical-records")]
-        public async Task<IActionResult> GetMyMedicalRecords([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        public async Task<IActionResult> GetMyMedicalRecords([FromQuery] MedicalRecordFilterDto filter, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             var patientId = GetCurrentUserPatientId();
             if (!patientId.HasValue)
@@ -29,7 +30,7 @@ namespace HospitalManagementSystem.API.Controllers
                 return Forbid();
             }
 
-            var records = await _medicalRecordService.GetMedicalRecordsForPatientAsync(patientId.Value, page, pageSize);
+            var records = await _medicalRecordService.GetMedicalRecordsForPatientAsync(patientId.Value, filter, page, pageSize);
             return Ok(records);
         }
 

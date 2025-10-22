@@ -1,4 +1,5 @@
 using HospitalManagementSystem.Domain.Entities;
+using HospitalManagementSystem.Domain.Specifications;
 
 namespace HospitalManagementSystem.Domain.Repositories
 {
@@ -15,5 +16,6 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<IEnumerable<MedicalRecord>> GetAllAsync();
         Task<IEnumerable<MedicalRecord>> GetUnpaidMedicalRecordsAsync(int page, int pageSize);
         Task<IEnumerable<MedicalRecord>> GetRefundableMedicalRecordsAsync(int page, int pageSize);
+        IQueryable<MedicalRecord> GetQueryable(ISpecification<MedicalRecord> spec);
     }
 }

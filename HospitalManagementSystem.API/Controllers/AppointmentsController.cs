@@ -201,6 +201,7 @@ namespace HospitalManagementSystem.API.Controllers
         [Authorize(Roles = "Doctor")]
         public async Task<ActionResult<object>> GetMyAppointments(
             [FromQuery] DateTime? startDate, 
+            [FromQuery] string? patientName, // Added for searching
             [FromQuery] DateTime? endDate,
             [FromQuery] string? status,
             [FromQuery] int page = 1,
@@ -214,25 +215,36 @@ namespace HospitalManagementSystem.API.Controllers
                     return BadRequest(new { message = "Doctor ID not found in token" });
                 }
 
-                // Default to current week if no dates provided
-                var start = startDate ?? DateTime.UtcNow.Date;
-                var end = endDate ?? DateTime.UtcNow.Date.AddDays(7);
-
-                _logger.LogInformation("Fetching appointments for doctor {DoctorId} from {Start} to {End}, page {Page}, status: {Status}", 
-                    doctorId, start, end, page, status ?? "all");
+                _logger.LogInformation("Fetching appointments for doctor {DoctorId}, page {Page}, status: {Status}", 
+                    doctorId, page, status ?? "all");
 
                 // Build query
                 var query = _context.Appointments
                     .Include(a => a.Patient)
                     .Include(a => a.Doctor)
-                    .Where(a => a.DoctorId == doctorId && a.Date >= start && a.Date <= end)
+                    .Where(a => a.DoctorId == doctorId)
                     // Exclude Cancelled and ExpiredPayment appointments - doctors don't need to see these
                     .Where(a => a.Status != "Cancelled" && a.Status != "ExpiredPayment");
 
-                // Filter by status if provided
+                // Apply filters conditionally
+                if (startDate.HasValue)
+                {
+                    query = query.Where(a => a.Date >= startDate.Value.ToUniversalTime());
+                }
+
+                if (endDate.HasValue)
+                {
+                    query = query.Where(a => a.Date <= endDate.Value.ToUniversalTime());
+                }
+
                 if (!string.IsNullOrEmpty(status) && status != "all")
                 {
                     query = query.Where(a => a.Status == status);
+                }
+
+                if (!string.IsNullOrEmpty(patientName))
+                {
+                    query = query.Where(a => a.Patient.Name.Contains(patientName));
                 }
 
                 // Get total count before pagination
@@ -264,9 +276,10 @@ namespace HospitalManagementSystem.API.Controllers
                     },
                     filters = new
                     {
-                        startDate = start,
-                        endDate = end,
-                        status = status ?? "all"
+                        startDate,
+                        endDate,
+                        status = status ?? "all",
+                        patientName
                     }
                 });
             }

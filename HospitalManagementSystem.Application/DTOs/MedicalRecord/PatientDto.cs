@@ -7,5 +7,6 @@ namespace HospitalManagementSystem.Application.DTOs.MedicalRecord
         public int Age { get; set; }
         public string Email { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
+        public List<PatientIdentifierDto>? PatientIdentifiers { get; set; }
     }
 }

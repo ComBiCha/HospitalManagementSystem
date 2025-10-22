@@ -4,6 +4,11 @@ using HospitalManagementSystem.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using HospitalManagementSystem.Domain.Caching;
+using HospitalManagementSystem.Domain.Specifications;
+using HospitalManagementSystem.Application.Services;
+using Microsoft.EntityFrameworkCore;
+using HospitalManagementSystem.Application.DTOs.Common;
+using HospitalManagementSystem.Application.DTOs;
 
 public class MedicalRecordApplicationService
 {
@@ -97,6 +102,32 @@ public class MedicalRecordApplicationService
         if (medicalRecord == null)
             return ("Medical record not found", false);
 
+        var prescriptionItems = await _prescriptionItemRepository.GetByMedicalRecordIdAsync(id);
+
+        var nonFinalItems = prescriptionItems.Where(item => {
+            // Final states that are universally acceptable.
+            if (item.Status == "Cancelled") return false;
+
+            if (item.ItemType == "Test")
+            {
+                // For a test, the only other acceptable final state is "Completed".
+                return item.Status != "Completed";
+            }
+            else // Assuming "Medicine"
+            {
+                // For a medicine, "Confirmed" is sufficient. "Completed" is also a valid final state.
+                return item.Status != "Confirmed" && item.Status != "Completed";
+            }
+        }).ToList();
+
+        if (nonFinalItems.Any())
+        {
+            var firstError = nonFinalItems.First();
+            var requiredState = firstError.ItemType == "Test" ? "'Completed'" : "'Confirmed' or 'Completed'";
+            var message = $"Không thể hoàn thành. {firstError.ItemType} '{firstError.ItemName}' phải ở trạng thái {requiredState} hoặc 'Cancelled'. Trạng thái hiện tại: '{firstError.Status}'.";
+            return (message, false);
+        }
+
         if (medicalRecord.Appointment != null)
         {
             medicalRecord.Appointment.Status = "Completed";
@@ -130,19 +161,48 @@ public class MedicalRecordApplicationService
         return ("Hoàn thành khám bệnh", true);
     }
 
-    public async Task<IEnumerable<PatientMedicalRecordDto>> GetMedicalRecordsForPatientAsync(int patientId, int page, int pageSize)
+    public async Task<PagedResult<PatientMedicalRecordDto>> GetMedicalRecordsForPatientAsync(int patientId, MedicalRecordFilterDto filter, int page, int pageSize)
     {
-        var cacheKey = $"patient:{patientId}:medical-records:page:{page}:{pageSize}";
-        var cachedRecords = await _cacheService.GetAsync<IEnumerable<PatientMedicalRecordDto>>(cacheKey);
+        var filterCacheKey = $"spec:{filter.Specialty ?? "any"}_doc:{filter.DoctorName ?? "any"}_start:{filter.StartDate?.Ticks ?? 0}_end:{filter.EndDate?.Ticks ?? 0}";
+        var cacheKey = $"patient:{patientId}:medical-records:page:{page}:{pageSize}:{filterCacheKey}";
+        var cachedResult = await _cacheService.GetAsync<PagedResult<PatientMedicalRecordDto>>(cacheKey);
 
-        if (cachedRecords != null)
+        if (cachedResult != null)
         {
             _logger.LogInformation("Cache HIT for key: {CacheKey}", cacheKey);
-            return cachedRecords;
+            return cachedResult;
         }
 
         _logger.LogInformation("Cache MISS for key: {CacheKey}", cacheKey);
-        var records = await _medicalRecordRepository.GetByPatientIdAsync(patientId, page, pageSize);
+
+        ISpecification<MedicalRecord> spec = new MedicalRecordForPatientSpecification(patientId);
+
+        if (!string.IsNullOrEmpty(filter.Specialty))
+        {
+            spec = spec.And(new MedicalRecordBySpecialtySpecification(filter.Specialty));
+        }
+
+        if (!string.IsNullOrEmpty(filter.DoctorName))
+        {
+            spec = spec.And(new MedicalRecordByDoctorNameSpecification(filter.DoctorName));
+        }
+
+        if (filter.StartDate.HasValue && filter.EndDate.HasValue)
+        {
+            var startDateUtc = DateTime.SpecifyKind(filter.StartDate.Value.Date, DateTimeKind.Utc);
+            var endDateValue = filter.EndDate.Value.Date.AddDays(1).AddTicks(-1);
+            var endDateUtc = DateTime.SpecifyKind(endDateValue, DateTimeKind.Utc);
+            spec = spec.And(new MedicalRecordByDateRangeSpecification(startDateUtc, endDateUtc));
+        }
+
+        var query = _medicalRecordRepository.GetQueryable(spec);
+        var totalCount = await query.CountAsync();
+
+        var records = await query
+            .OrderByDescending(m => m.Appointment.Date)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
 
         var dtos = records.Select(m => new PatientMedicalRecordDto
         {
@@ -164,9 +224,11 @@ public class MedicalRecordApplicationService
             AppointmentStatus = m.Appointment.Status
         }).ToList();
 
-        await _cacheService.SetAsync(cacheKey, dtos, TimeSpan.FromHours(1));
+        var pagedResult = new PagedResult<PatientMedicalRecordDto>(dtos, page, pageSize, totalCount);
 
-        return dtos;
+        await _cacheService.SetAsync(cacheKey, pagedResult, TimeSpan.FromHours(1));
+
+        return pagedResult;
     }
 
     public async Task<(string Message, MedicalRecordDto? MedicalRecord)> HospitalizeMedicalRecordAsync(int id)
@@ -402,7 +464,13 @@ public class MedicalRecordApplicationService
                 Name = record.Patient.Name,
                 Age = record.Patient.Age,
                 Email = record.Patient.Email,
-                Status = record.Patient.Status.ToString()
+                Status = record.Patient.Status.ToString(),
+                PatientIdentifiers = record.Patient.PatientIdentifiers?.Select(pi => new PatientIdentifierDto
+                {
+                    EHRSystem = pi.EHRSystem,
+                    ExternalId = pi.ExternalId,
+                    IdentifierType = pi.IdentifierType
+                }).ToList()
             } : null,
             Doctor = record.Doctor != null ? new DoctorDto
             {

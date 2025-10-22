@@ -3,6 +3,7 @@ using HospitalManagementSystem.Domain.Repositories;
 using HospitalManagementSystem.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using HospitalManagementSystem.Domain.Specifications;
 
 namespace HospitalManagementSystem.Infrastructure.Repositories
 {
@@ -21,6 +22,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
         {
             return await _context.MedicalRecords
                 .Include(m => m.Patient)
+                    .ThenInclude(p => p.PatientIdentifiers) // Include PatientIdentifiers
                 .Include(m => m.Doctor)
                 .Include(m => m.Appointment)
                 .Include(m => m.Payments)
@@ -31,6 +33,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
         {
             return await _context.MedicalRecords
                 .Include(m => m.Patient)
+                    .ThenInclude(p => p.PatientIdentifiers) // Include PatientIdentifiers
                 .Include(m => m.Doctor)
                 .Include(m => m.Appointment)
                 .Include(m => m.Payments)
@@ -41,6 +44,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
         {
             return await _context.MedicalRecords
                 .Include(m => m.Patient)
+                    .ThenInclude(p => p.PatientIdentifiers) // Include PatientIdentifiers
                 .Include(m => m.Doctor)
                 .Include(m => m.Appointment)
                 .Include(m => m.Payments)
@@ -53,6 +57,8 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
         {
             return await _context.MedicalRecords
                 .AsNoTracking()
+                .Include(m => m.Patient) // Include Patient
+                    .ThenInclude(p => p.PatientIdentifiers) // Include PatientIdentifiers
                 .Include(m => m.Doctor)
                 .Include(m => m.Appointment)
                 .Where(m => m.PatientId == patientId)
@@ -66,6 +72,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
         {
             return await _context.MedicalRecords
                 .Include(m => m.Patient)
+                    .ThenInclude(p => p.PatientIdentifiers) // Include PatientIdentifiers
                 .Include(m => m.Doctor)
                 .Include(m => m.Appointment)
                 .Include(m => m.Payments)
@@ -118,6 +125,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
         {
             return await _context.MedicalRecords
                 .Include(m => m.Patient)
+                    .ThenInclude(p => p.PatientIdentifiers) // Include PatientIdentifiers
                 .Include(m => m.Doctor)
                 .Include(m => m.Appointment)
                 .Include(m => m.Payments)
@@ -129,6 +137,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
         {
             return await _context.MedicalRecords
                 .Include(m => m.Patient)
+                    .ThenInclude(p => p.PatientIdentifiers) // Include PatientIdentifiers
                 .Include(m => m.Doctor)
                 .Include(m => m.Appointment)
                 .Where(m => (m.PaymentStatus == "Unpaid" || m.PaymentStatus == "PartiallyPaid") && m.Appointment.Status == "Completed")
@@ -142,6 +151,7 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
         {
             var refundableRecords = await _context.MedicalRecords
                 .Include(m => m.Patient)
+                    .ThenInclude(p => p.PatientIdentifiers) // Include PatientIdentifiers
                 .Include(m => m.Doctor)
                 .Include(m => m.Appointment)
                 .Where(m => m.Appointment.Status == "Completed")
@@ -153,6 +163,11 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToList();
+        }
+
+        public IQueryable<MedicalRecord> GetQueryable(ISpecification<MedicalRecord> spec)
+        {
+            return SpecificationEvaluator<MedicalRecord>.GetQuery(_context.MedicalRecords.AsQueryable(), spec);
         }
     }
 }

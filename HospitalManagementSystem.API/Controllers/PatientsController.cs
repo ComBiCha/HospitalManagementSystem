@@ -5,7 +5,9 @@ using HospitalManagementSystem.Infrastructure.Caching;
 using HospitalManagementSystem.Domain.Caching;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.Application.DTOs;
-using HospitalManagementSystem.Application.Services;
+using HospitalManagementSystem.Domain.Fhir;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -14,20 +16,118 @@ namespace HospitalManagementSystem.API.Controllers
     public class PatientsController : ControllerBase
     {
         private readonly IPatientRepository _patientRepository;
+        private readonly IAuthRepository _authRepository;
         private readonly ICacheService _cacheService;
         private readonly PatientService _patientService;
+        private readonly EhrFhirApplicationService _ehrFhirApplicationService;
         private readonly ILogger<PatientsController> _logger;
 
         public PatientsController(
             IPatientRepository patientRepository,
+            IAuthRepository authRepository,
             ICacheService cacheService,
             PatientService patientService,
+            EhrFhirApplicationService ehrFhirApplicationService,
             ILogger<PatientsController> logger)
         {
             _patientRepository = patientRepository;
+            _authRepository = authRepository;
             _cacheService = cacheService;
             _patientService = patientService;
+            _ehrFhirApplicationService = ehrFhirApplicationService;
             _logger = logger;
+        }
+
+        [HttpGet("verify-ehr-id")]
+        public async Task<IActionResult> VerifyEhrId([FromQuery] EHRSystem ehrSystem, [FromQuery] string patientId)
+        {
+            try
+            {
+                var (isValid, patientName) = await _ehrFhirApplicationService.VerifyPatientExistsAsync(patientId, ehrSystem);
+                return Ok(new { isValid, patientName });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error verifying EHR patient ID {PatientId} for system {EHRSystem}", patientId, ehrSystem);
+                return StatusCode(500, new { message = "An error occurred while verifying the patient ID.", error = ex.Message });
+            }
+        }
+
+        [HttpGet("import-preview")]
+        public async Task<IActionResult> ImportPreview([FromQuery] string epicId, [FromQuery] EHRSystem ehrSystem = EHRSystem.Epic)
+        {
+            try
+            {
+                var patientDto = await _ehrFhirApplicationService.GetPatientDemographicsAsync(epicId, ehrSystem);
+                if (patientDto == null)
+                {
+                    return NotFound(new { message = "Patient not found in the specified EHR system." });
+                }
+                return Ok(patientDto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching patient demographics for Epic ID {EpicId}", epicId);
+                return StatusCode(500, new { message = "An error occurred while fetching patient data for preview." });
+            }
+        }
+
+        [HttpPost("import-confirm")]
+        [Authorize]
+        public async Task<IActionResult> ImportConfirm([FromBody] ConfirmPatientImportDto dto)
+        {
+            try
+            {
+                var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (string.IsNullOrEmpty(userIdString) || !int.TryParse(userIdString, out var userId))
+                {
+                    return Unauthorized(new { message = "User ID not found in token." });
+                }
+
+                var user = await _authRepository.GetUserByIdAsync(userId);
+                if (user == null)
+                {
+                    return Unauthorized(new { message = "User not found." });
+                }
+
+                if (user.PatientId.HasValue)
+                {
+                    return BadRequest(new { message = "User already has a linked patient profile." });
+                }
+
+                var createdPatient = await _patientService.CreatePatientFromEpicImportAsync(dto);
+
+                user.PatientId = createdPatient.Id;
+                await _authRepository.UpdateUserAsync(user);
+
+                var patientDto = new
+                {
+                    createdPatient.Id,
+                    createdPatient.Name,
+                    createdPatient.DateOfBirth,
+                    createdPatient.Email,
+                    createdPatient.Status,
+                    createdPatient.CreatedAt,
+                    createdPatient.UpdatedAt,
+                    Identifiers = createdPatient.PatientIdentifiers.Select(x => new
+                    {
+                        x.Id,
+                        x.EHRSystem,
+                        x.ExternalId,
+                        x.IdentifierType,
+                        x.IsActive,
+                        x.CreatedAt,
+                        x.UpdatedAt
+                    })
+                };
+
+                return CreatedAtAction(nameof(GetPatient), new { id = createdPatient.Id }, patientDto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error confirming patient import");
+                return StatusCode(500, new { message = "An error occurred during patient import confirmation." });
+            }
         }
 
         [HttpGet]
@@ -323,7 +423,7 @@ namespace HospitalManagementSystem.API.Controllers
                 {
                     createdPatient.Id,
                     createdPatient.Name,
-                    createdPatient.Age,
+                    createdPatient.DateOfBirth,
                     createdPatient.Email,
                     createdPatient.Status,
                     createdPatient.CreatedAt,

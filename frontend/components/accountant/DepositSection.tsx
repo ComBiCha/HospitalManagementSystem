@@ -2,23 +2,40 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { Search, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, RefreshCw, Filter, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import AdvancePaymentSection from '@/components/accountant/AdvancePaymentSection';
-import PendingPaymentActions from '@/components/accountant/PendingPaymentActions'; // Import the new component
-import { EligibleAppointment, Paginated } from '@/lib/types';
+import PendingPaymentActions from '@/components/accountant/PendingPaymentActions';
+import { EligibleAppointment, PaginatedResultDto } from '@/lib/types';
+
+interface FilterState {
+  patientName: string;
+  appointmentId: string;
+  startDate: string;
+  endDate: string;
+}
 
 export default function DepositSection() {
   const [appointments, setAppointments] = useState<EligibleAppointment[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [filters, setFilters] = useState<FilterState>({ patientName: '', appointmentId: '', startDate: '', endDate: '' });
 
-  const fetchEligibleAppointments = useCallback(async (page = 1) => {
+  const fetchEligibleAppointments = useCallback(async (page = 1, appliedFilters: FilterState) => {
     setIsLoading(true);
     try {
-      const response = await api.get(`/accountant/eligible-for-deposit-appointments?page=${page}&pageSize=5`);
-      const data: Paginated<EligibleAppointment> = response.data;
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('pageSize', '5');
+      if (appliedFilters.patientName) params.append('patientName', appliedFilters.patientName);
+      if (appliedFilters.appointmentId) params.append('appointmentId', appliedFilters.appointmentId);
+      if (appliedFilters.startDate) params.append('startDate', appliedFilters.startDate);
+      if (appliedFilters.endDate) params.append('endDate', appliedFilters.endDate);
+
+      const response = await api.get(`/accountant/eligible-for-deposit-appointments`, { params });
+      const data: PaginatedResultDto<EligibleAppointment> = response.data;
+      
       setAppointments(data.items || []);
       setCurrentPage(data.page);
       setTotalPages(Math.ceil(data.totalCount / data.pageSize));
@@ -31,8 +48,30 @@ export default function DepositSection() {
   }, []);
 
   useEffect(() => {
-    fetchEligibleAppointments(1);
+    fetchEligibleAppointments(1, filters);
   }, [fetchEligibleAppointments]);
+
+  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleApplyFilters = () => {
+    setCurrentPage(1);
+    fetchEligibleAppointments(1, filters);
+  };
+
+  const handleClearFilters = () => {
+    const clearedFilters = { patientName: '', appointmentId: '', startDate: '', endDate: '' };
+    setFilters(clearedFilters);
+    setCurrentPage(1);
+    fetchEligibleAppointments(1, clearedFilters);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    fetchEligibleAppointments(newPage, filters);
+  }
 
   return (
     <div className="space-y-6">
@@ -41,14 +80,20 @@ export default function DepositSection() {
         <p className="text-gray-600 mt-1">Tạo các khoản thanh toán tạm ứng cho các cuộc hẹn sắp tới.</p>
       </div>
 
-      {/* Unpaid Records List */}
+      <FilterPanel 
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        onApply={handleApplyFilters}
+        onClear={handleClearFilters}
+      />
+
       {isLoading ? (
         <div className="flex justify-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
       ) : appointments.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-xl shadow-sm border">
-          <h3 className="mt-2 text-sm font-medium text-gray-900">Không có cuộc hẹn nào cần tạm ứng</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">Không có cuộc hẹn nào khớp với bộ lọc</h3>
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -69,7 +114,7 @@ export default function DepositSection() {
                 <tr key={appointment.appointmentId} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-gray-900">{appointment.patientName}</div>
-                    <div className="text-sm text-gray-500">ID: {appointment.patientId}</div>
+                    <div className="text-sm text-gray-500">ID BN: {appointment.patientId}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{appointment.doctorName}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -82,12 +127,12 @@ export default function DepositSection() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     {appointment.pendingPaymentId ? (
-                      <PendingPaymentActions appointment={appointment} onSuccess={() => fetchEligibleAppointments(currentPage)} />
+                      <PendingPaymentActions appointment={appointment} onSuccess={() => fetchEligibleAppointments(currentPage, filters)} />
                     ) : (
                       <AdvancePaymentSection 
                         appointmentId={appointment.appointmentId} 
                         appointmentStatus={appointment.appointmentStatus}
-                        onSuccess={() => fetchEligibleAppointments(currentPage)}
+                        onSuccess={() => fetchEligibleAppointments(currentPage, filters)}
                       />
                     )}
                   </td>
@@ -98,30 +143,73 @@ export default function DepositSection() {
         </div>
       )}
 
-      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <button
-            onClick={() => fetchEligibleAppointments(currentPage - 1)}
-            disabled={currentPage <= 1 || isLoading}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <ChevronLeft className="w-5 h-5 mr-2" />
-            Trước
-          </button>
-          <span className="text-sm text-gray-700">
-            Trang <span className="font-medium">{currentPage}</span> / <span className="font-medium">{totalPages}</span>
-          </span>
-          <button
-            onClick={() => fetchEligibleAppointments(currentPage + 1)}
-            disabled={currentPage >= totalPages || isLoading}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Sau
-            <ChevronRight className="w-5 h-5 ml-2" />
-          </button>
-        </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={handlePageChange} isLoading={isLoading} />
       )}
     </div>
   );
+}
+
+
+interface FilterPanelProps {
+  filters: FilterState;
+  onFilterChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onApply: () => void;
+  onClear: () => void;
+}
+
+function FilterPanel({ filters, onFilterChange, onApply, onClear }: FilterPanelProps) {
+  return (
+    <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <input type="text" name="patientName" placeholder="Tên bệnh nhân" value={filters.patientName} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+        <input type="number" name="appointmentId" placeholder="ID Cuộc hẹn" value={filters.appointmentId} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+        <input type="date" name="startDate" value={filters.startDate} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+        <input type="date" name="endDate" value={filters.endDate} onChange={onFilterChange} className="w-full p-2 border rounded-md bg-gray-50" />
+      </div>
+      <div className="flex justify-end space-x-2">
+        <button onClick={onClear} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 flex items-center space-x-2">
+          <X className="w-4 h-4" />
+          <span>Xóa bộ lọc</span>
+        </button>
+        <button onClick={onApply} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 flex items-center space-x-2">
+          <Filter className="w-4 h-4" />
+          <span>Lọc</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface PaginationProps {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  isLoading: boolean;
+}
+
+function Pagination({ currentPage, totalPages, onPageChange, isLoading }: PaginationProps) {
+  return (
+    <div className="flex items-center justify-between mt-4">
+      <button
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage <= 1 || isLoading}
+        className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <ChevronLeft className="w-5 h-5 mr-2" />
+        Trước
+      </button>
+      <span className="text-sm text-gray-700">
+        Trang <span className="font-medium">{currentPage}</span> / <span className="font-medium">{totalPages}</span>
+      </span>
+      <button
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage >= totalPages || isLoading}
+        className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Sau
+        <ChevronRight className="w-5 h-5 ml-2" />
+      </button>
+    </div>
+  )
 }

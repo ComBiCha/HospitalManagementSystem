@@ -11,8 +11,21 @@ namespace HospitalManagementSystem.Domain.Entities
         [StringLength(100)]
         public string Name { get; set; } = string.Empty;
 
+        public DateTime? DateOfBirth { get; set; }
+
         [Range(0, 150)]
-        public int Age { get; set; }
+        public int Age 
+        {
+            get 
+            {
+                if (!DateOfBirth.HasValue) return 0;
+                var today = DateTime.Today;
+                var age = today.Year - DateOfBirth.Value.Year;
+                if (DateOfBirth.Value.Date > today.AddYears(-age)) age--;
+                return age;
+            }
+            set { /* Setter is only for EF Core, no logic needed */ }
+        }
 
         [Required]
         [EmailAddress]

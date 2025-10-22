@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.Application.DTOs;
+using HospitalManagementSystem.Application.DTOs.Accountant;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -22,11 +23,11 @@ namespace HospitalManagementSystem.API.Controllers
         #region Eligible Appointments for Deposit
 
         [HttpGet("eligible-for-deposit-appointments")]
-        public async Task<ActionResult<PaginatedResultDto<EligibleAppointmentDto>>> GetEligibleForDepositAppointments([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        public async Task<ActionResult<PaginatedResultDto<EligibleAppointmentDto>>> GetEligibleForDepositAppointments([FromQuery] AccountantFilterDto filter, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
-                var result = await _accountantService.GetEligibleForDepositAppointmentsAsync(page, pageSize);
+                var result = await _accountantService.GetEligibleForDepositAppointmentsAsync(filter, page, pageSize);
                 return Ok(result);
             }
             catch (Exception ex)
@@ -95,11 +96,11 @@ namespace HospitalManagementSystem.API.Controllers
         #region Final Payments
 
         [HttpGet("unpaid-medical-records")]
-        public async Task<ActionResult<IEnumerable<UnpaidMedicalRecordDto>>> GetUnpaidMedicalRecords([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<ActionResult<IEnumerable<UnpaidMedicalRecordDto>>> GetUnpaidMedicalRecords([FromQuery] AccountantFilterDto filter, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
             try
             {
-                var records = await _accountantService.GetUnpaidMedicalRecordsAsync(page, pageSize);
+                var records = await _accountantService.GetUnpaidMedicalRecordsAsync(filter, page, pageSize);
                 return Ok(records);
             }
             catch (Exception ex)
@@ -124,20 +125,20 @@ namespace HospitalManagementSystem.API.Controllers
             }
         }
 
-        // [HttpPost("medical-records/{medicalRecordId}/payments/stripe/initiate")]
-        // public async Task<ActionResult<InitiateStripePaymentResponseDto>> InitiateStripePayment(int medicalRecordId)
-        // {
-        //     try
-        //     {
-        //         var responseDto = await _accountantService.InitiateStripePaymentForMedicalRecordAsync(medicalRecordId);
-        //         return Ok(responseDto);
-        //     }
-        //     catch (Exception ex)
-        //     {
-        //         _logger.LogError(ex, "Error initiating Stripe payment for medical record {MedicalRecordId}", medicalRecordId);
-        //         return StatusCode(500, "Internal server error: " + ex.Message);
-        //     }
-        // }
+        [HttpPost("medical-records/{medicalRecordId}/payments/stripe/initiate")]
+        public async Task<ActionResult<InitiateStripePaymentResponseDto>> InitiateStripePayment(int medicalRecordId)
+        {
+            try
+            {
+                var responseDto = await _accountantService.InitiateStripePaymentForMedicalRecordAsync(medicalRecordId);
+                return Ok(responseDto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error initiating Stripe payment for medical record {MedicalRecordId}", medicalRecordId);
+                return StatusCode(500, "Internal server error: " + ex.Message);
+            }
+        }
 
         #endregion
 
@@ -205,9 +206,9 @@ namespace HospitalManagementSystem.API.Controllers
         #region Refund Management
 
         [HttpGet("refundable-medical-records")]
-        public async Task<ActionResult<IEnumerable<RefundableMedicalRecordDto>>> GetRefundableMedicalRecords([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+        public async Task<ActionResult<IEnumerable<RefundableMedicalRecordDto>>> GetRefundableMedicalRecords([FromQuery] AccountantFilterDto filter, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
-            var records = await _accountantService.GetRefundableMedicalRecordsAsync(page, pageSize);
+            var records = await _accountantService.GetRefundableMedicalRecordsAsync(filter, page, pageSize);
             return Ok(records);
         }
 
