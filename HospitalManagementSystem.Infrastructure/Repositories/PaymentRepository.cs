@@ -93,6 +93,16 @@ namespace HospitalManagementSystem.Infrastructure.Repositories
                 .ToListAsync();
         }
 
+        public async Task<Payment?> GetLatestPendingBookingFeePaymentForAppointmentAsync(int appointmentId)
+        {
+            return await _context.Payments
+                .Where(p => p.AppointmentId == appointmentId &&
+                            p.PaymentType == PaymentTypes.BookingFee &&
+                            p.Status == PaymentStatuses.Pending)
+                .OrderByDescending(p => p.CreatedAt)
+                .FirstOrDefaultAsync();
+        }
+
         public async Task<IEnumerable<Payment>> GetByStatusAsync(string status)
         {
             return await _context.Payments

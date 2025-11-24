@@ -35,6 +35,9 @@ using Hangfire.Dashboard;
 using Stripe;
 using HospitalManagementSystem.Infrastructure.Services;
 using HospitalManagementSystem.Domain.Payments;
+using HospitalManagementSystem.API.Hubs; // Add this using statement
+using ModelContextProtocol.Server;
+using System.ComponentModel;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -83,6 +86,9 @@ builder.Services.AddScoped<IAppointmentRepository, AppointmentRepository>();
 builder.Services.AddScoped<IPaymentRepository, PaymentRepository>(); // Add this
 // builder.Services.AddScoped<IBillingRepository, BillingRepository>();
 builder.Services.AddScoped<IDoctorShiftRepository, DoctorShiftRepository>();
+builder.Services.AddScoped<IChatRoomRepository, ChatRoomRepository>();
+builder.Services.AddScoped<IChatMessageRepository, ChatMessageRepository>();
+builder.Services.AddScoped<IChatParticipantRepository, ChatParticipantRepository>();
 
 builder.Services.AddHostedService<RabbitMQConsumerService>();
 
@@ -105,6 +111,7 @@ builder.Services.AddScoped<MedicalRecordApplicationService>();
 builder.Services.AddScoped<AccountantApplicationService>();
 builder.Services.AddScoped<AppointmentApplicationService>();
 builder.Services.AddScoped<AppointmentExaminationService>();
+builder.Services.AddScoped<AppointmentTools>();
 builder.Services.AddScoped<IStripePaymentService, StripePaymentService>();
 
 // Redis ConnectionMultiplexer
@@ -148,10 +155,23 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 builder.Services.AddGrpc(options => { options.EnableDetailedErrors = true; });
+
+// Read Frontend URL from configuration
+var frontendUrl = builder.Configuration["APP-FRONTENDURL"];
+if (string.IsNullOrEmpty(frontendUrl))
+{
+    // Use a default or throw an exception if the URL is critical
+    frontendUrl = "http://localhost:3000"; // Default for local dev if not set
+    Console.WriteLine("Warning: APP-FRONTENDURL not set. Defaulting to http://localhost:3000 for CORS.");
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
-        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+        policy.WithOrigins(frontendUrl)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials());
 });
 builder.Services.AddHealthChecks()
     .AddCheck("hms-api", () => Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("API running"))
@@ -176,6 +196,20 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = jwtSettings["Issuer"],
         ValidAudience = jwtSettings["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["SecretKey"]))
+    };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/chatHub"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -212,6 +246,16 @@ builder.Services.AddHangfire(config => config
 
 builder.Services.AddHangfireServer();
 
+builder.Services.AddSignalR().AddJsonProtocol(options =>
+{
+    options.PayloadSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+});
+
+// MCP Server Registration
+builder.Services.AddMcpServer()
+    .WithHttpTransport()
+    .WithToolsFromAssembly();
+
 // Configure Stripe globally
 StripeConfiguration.ApiKey = builder.Configuration["Stripe:SecretKey"];
 
@@ -230,6 +274,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseWebSockets(); // Enable WebSockets
+
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
 {
     Authorization = new[] { new AllowAllAuthorizationFilter() }
@@ -245,11 +291,12 @@ app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapMcp(); // Map MCP endpoint
 app.MapGrpcService<PatientGrpcService>();
 app.MapGrpcService<DoctorGrpcService>();
 app.MapGrpcService<AuthGrpcService>();
 app.MapHealthChecks("/health");
-
+app.MapHub<ChatHub>("/chatHub");
 // Initialize attendance notification recurring jobs
 using (var scope = app.Services.CreateScope())
 {

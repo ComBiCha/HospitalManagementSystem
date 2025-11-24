@@ -11,6 +11,7 @@ using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.Domain.Events;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -26,6 +27,7 @@ namespace HospitalManagementSystem.API.Controllers
         private readonly IRabbitMQService _rabbitMQService;
         private readonly ILogger<AppointmentsController> _logger;
         private readonly HospitalDbContext _context;
+        private readonly AppointmentApplicationService _appointmentService;
 
         public AppointmentsController(
             IAppointmentRepository appointmentRepository,
@@ -34,7 +36,8 @@ namespace HospitalManagementSystem.API.Controllers
             IPaymentRepository paymentRepository,
             IRabbitMQService rabbitMQService, 
             ILogger<AppointmentsController> logger,
-            HospitalDbContext context)
+            HospitalDbContext context,
+            AppointmentApplicationService appointmentService)
         {
             _appointmentRepository = appointmentRepository;
             _patientRepository = patientRepository;
@@ -43,6 +46,7 @@ namespace HospitalManagementSystem.API.Controllers
             _rabbitMQService = rabbitMQService; 
             _logger = logger;
             _context = context;
+            _appointmentService = appointmentService;
         }
 
         /// <summary>
@@ -201,7 +205,7 @@ namespace HospitalManagementSystem.API.Controllers
         [Authorize(Roles = "Doctor")]
         public async Task<ActionResult<object>> GetMyAppointments(
             [FromQuery] DateTime? startDate, 
-            [FromQuery] string? patientName, // Added for searching
+            [FromQuery] string? patientName, 
             [FromQuery] DateTime? endDate,
             [FromQuery] string? status,
             [FromQuery] int page = 1,
@@ -364,6 +368,7 @@ namespace HospitalManagementSystem.API.Controllers
                     DoctorId = request.DoctorId,
                     Date = utcDate,
                     Status = "PendingPayment", 
+                    Type = AppointmentType.InPerson, // Set type for in-person appointments
                     BookingFee = 50000, 
                     PaymentExpiresAt = DateTime.UtcNow.AddMinutes(30),
                     CreatedAt = DateTime.UtcNow,
@@ -519,128 +524,35 @@ namespace HospitalManagementSystem.API.Controllers
                 var currentUserId = GetCurrentUserId();
                 var currentUserRole = GetCurrentUserRole();
 
-                _logger.LogInformation("User {UserId} deleting appointment with ID: {AppointmentId} via REST API", 
-                    currentUserId, id);
+                _logger.LogInformation("User {UserId} with role {Role} cancelling appointment {AppointmentId}", 
+                    currentUserId, currentUserRole, id);
 
                 var appointment = await _appointmentRepository.GetByIdAsync(id);
                 if (appointment == null)
                 {
-                    return NotFound($"Appointment with ID {id} not found");
+                    return NotFound(new { message = $"Appointment with ID {id} not found" });
                 }
 
-                if (!await CanAccessAppointment(appointment, currentUserId, currentUserRole))
-                {
-                    return Forbid("You don't have permission to cancel this appointment");
-                }
-
-                var patient = await _patientRepository.GetPatientByIdAsync(appointment.PatientId);
-                if (patient == null)
-                {
-                    return NotFound($"Patient with ID {appointment.PatientId} not found");
-                }
-
-                var doctor = await _doctorRepository.GetByIdAsync(appointment.DoctorId);
-                if (doctor == null)
-                {
-                    return NotFound($"Doctor with ID {appointment.DoctorId} not found");
-                }
-
-                // Handle payment refund
-                if (appointment.BookingPaymentId.HasValue)
-                {
-                    var payment = await _paymentRepository.GetByIdAsync(appointment.BookingPaymentId.Value);
-                    if (payment != null)
-                    {
-                        if (payment.Status == "Completed")
-                        {
-                            try
-                            {
-                                if (!string.IsNullOrEmpty(payment.StripePaymentIntentId))
-                                {
-                                    var refundService = new Stripe.RefundService();
-                                    var refund = await refundService.CreateAsync(new Stripe.RefundCreateOptions
-                                    {
-                                        PaymentIntent = payment.StripePaymentIntentId,
-                                        Amount = (long)payment.Amount,
-                                        Reason = Stripe.RefundReasons.RequestedByCustomer,
-                                        Metadata = new Dictionary<string, string>
-                                        {
-                                            { "appointment_id", appointment.Id.ToString() },
-                                            { "cancelled_by", currentUserId.ToString() }
-                                        }
-                                    });
-
-                                    payment.Status = "Refunded";
-                                    payment.FailureReason = $"Appointment cancelled by {currentUserRole}";
-                                    payment.UpdatedAt = DateTime.UtcNow;
-                                    await _paymentRepository.UpdateAsync(payment);
-
-                                    _logger.LogInformation("Refunded payment {PaymentId} for cancelled appointment {AppointmentId}",
-                                        payment.Id, appointment.Id);
-
-                                    // Publish refund event
-                                    await _rabbitMQService.PublishRefundProcessedAsync(new RefundProcessedEvent
-                                    {
-                                        BillingId = payment.Id,
-                                        AppointmentId = appointment.Id,
-                                        PatientId = payment.PatientId,
-                                        OriginalAmount = payment.Amount,
-                                        RefundAmount = payment.Amount,
-                                        PaymentMethod = payment.PaymentMethod,
-                                        OriginalTransactionId = payment.TransactionId,
-                                        RefundTransactionId = refund.Id,
-                                        RefundedAt = DateTime.UtcNow,
-                                        RefundedByUserId = currentUserId,
-                                        RefundedByRole = currentUserRole
-                                    });
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogError(ex, "Error refunding payment {PaymentId}", payment.Id);
-                            }
-                        }
-                        else if (payment.Status == "Pending")
-                        {
-                            payment.Status = "Failed";
-                            payment.FailureReason = "Appointment cancelled before payment completed";
-                            payment.UpdatedAt = DateTime.UtcNow;
-                            await _paymentRepository.UpdateAsync(payment);
-
-                            _logger.LogInformation("Marked pending payment {PaymentId} as failed for cancelled appointment {AppointmentId}",
-                                payment.Id, appointment.Id);
-                        }
-                    }
-                }
-
-                appointment.Status = "Cancelled";
-                appointment.CancellationReason = $"Cancelled by {currentUserRole}";
-                appointment.UpdatedAt = DateTime.UtcNow;
-                await _appointmentRepository.UpdateAsync(appointment);
-
-                await _rabbitMQService.PublishAppointmentCancelledAsync(new AppointmentCancelledEvent
-                {
-                    AppointmentId = appointment.Id,
-                    PatientId = appointment.PatientId,
-                    PatientName = patient?.Name ?? "",
-                    DoctorId = appointment.DoctorId,
-                    DoctorName = doctor?.Name ?? "",
-                    DoctorSpecialty = doctor?.Specialty ?? "",
-                    Date = appointment.Date,
-                    Status = "Cancelled",
-                    CancelledAt = DateTime.UtcNow,
-                    CancelledByUserId = currentUserId, 
-                    CancelledByRole = currentUserRole   
-                });
-
-                _logger.LogInformation("Appointment {AppointmentId} cancelled by user {UserId} with role {Role}", 
-                    id, currentUserId, currentUserRole);
+                // The service layer will handle all authorization and business logic
+                await _appointmentService.CancelAppointmentAsync(id, appointment.PatientId, currentUserRole, currentUserId);
 
                 return NoContent();
             }
+            catch (KeyNotFoundException ex)
+            {
+                return StatusCode(StatusCodes.Status404NotFound, new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return StatusCode(StatusCodes.Status400BadRequest, new { message = ex.Message });
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error deleting appointment with ID: {AppointmentId}", id);
+                _logger.LogError(ex, "Error cancelling appointment with ID: {AppointmentId}", id);
                 return StatusCode(500, "Internal server error");
             }
         }
@@ -702,6 +614,7 @@ namespace HospitalManagementSystem.API.Controllers
                 DoctorId = appointment.DoctorId,
                 Date = appointment.Date,
                 Status = appointment.Status,
+                Type = appointment.Type, // Add this line
                 PatientName = patient?.Name ?? "Unknown Patient",
                 DoctorName = doctor?.Name ?? "Unknown Doctor",
                 DoctorSpecialty = doctor?.Specialty ?? "Unknown Specialty",
@@ -799,6 +712,7 @@ namespace HospitalManagementSystem.API.Controllers
         public int DoctorId { get; set; }
         public DateTime Date { get; set; }
         public string Status { get; set; } = string.Empty;
+        public AppointmentType Type { get; set; }
         public string PatientName { get; set; } = string.Empty;
         public string DoctorName { get; set; } = string.Empty;
         public string DoctorSpecialty { get; set; } = string.Empty;

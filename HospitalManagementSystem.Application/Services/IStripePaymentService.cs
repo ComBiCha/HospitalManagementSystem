@@ -1,1 +1,0 @@
-// This file has been moved to HospitalManagementSystem.Domain/Payments/IStripePaymentService.cs

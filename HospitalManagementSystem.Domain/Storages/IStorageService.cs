@@ -7,5 +7,6 @@ namespace HospitalManagementSystem.Domain.Storages
         Task<Stream?> DownloadAsync(string fileId);
         Task<string> UploadAnyFileAsync(Stream stream, string fileName, string contentType = "application/octet-stream");
         Task<Stream?> DownloadAnyFileAsync(string fileId);
+        Task<(Stream? Stream, string? ContentType)> GetFileWithContentTypeAsync(string fileId);
     }
 }

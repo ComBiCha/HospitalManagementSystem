@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using HospitalManagementSystem.Domain.Entities;
+using HospitalManagementSystem.Infrastructure.Persistence.Extensions;
 
 namespace HospitalManagementSystem.Infrastructure.Persistence
 {
@@ -31,9 +32,17 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
         public DbSet<PrescriptionItem> PrescriptionItems { get; set; }
         public DbSet<MedicalRecordHistory> MedicalRecordHistories { get; set; }
 
+        // Chat entities
+        public DbSet<ChatRoom> ChatRooms { get; set; } = null!;
+        public DbSet<ChatMessage> ChatMessages { get; set; } = null!;
+        public DbSet<ChatParticipant> ChatParticipants { get; set; } = null!;
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.HasDbFunction(typeof(UnaccentExtension).GetMethod(nameof(UnaccentExtension.Unaccent), new[] { typeof(string) }))
+                .HasName("unaccent");
 
             modelBuilder.Entity<Patient>(entity =>
             {
@@ -318,6 +327,67 @@ namespace HospitalManagementSystem.Infrastructure.Persistence
 
             // Seed default users
             SeedDefaultUsers(modelBuilder);
+
+            // Chat entities configuration
+            modelBuilder.Entity<ChatRoom>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.AppointmentId).IsUnique(); // One chat room per appointment
+                entity.Property(e => e.AppointmentId).IsRequired();
+                entity.Property(e => e.CreatedAt).IsRequired();
+
+                entity.HasOne(cr => cr.Appointment)
+                      .WithOne() // Assuming Appointment does not have a direct navigation to ChatRoom yet
+                      .HasForeignKey<ChatRoom>(cr => cr.AppointmentId)
+                      .OnDelete(DeleteBehavior.Cascade); // Delete chat room if appointment is deleted
+            });
+
+            modelBuilder.Entity<ChatMessage>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.ChatRoomId).IsRequired();
+                entity.Property(e => e.SenderId).IsRequired();
+                entity.Property(e => e.SentAt).IsRequired();
+                entity.Property(e => e.MessageType).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Content).HasColumnType("text"); // Allow longer text
+                entity.Property(e => e.ImageUrl).HasColumnType("text"); // Allow longer URLs
+
+                entity.HasOne(cm => cm.ChatRoom)
+                      .WithMany(cr => cr.Messages)
+                      .HasForeignKey(cm => cm.ChatRoomId)
+                      .OnDelete(DeleteBehavior.Cascade); // Delete messages if chat room is deleted
+
+                entity.HasOne(cm => cm.Sender)
+                      .WithMany()
+                      .HasForeignKey(cm => cm.SenderId)
+                      .OnDelete(DeleteBehavior.Restrict); // Don't delete user if they sent messages
+
+                entity.HasIndex(e => e.ChatRoomId);
+                entity.HasIndex(e => e.SenderId);
+                entity.HasIndex(e => e.SentAt);
+            });
+
+            modelBuilder.Entity<ChatParticipant>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.ChatRoomId).IsRequired();
+                entity.Property(e => e.UserId).IsRequired();
+                entity.Property(e => e.JoinedAt).IsRequired();
+
+                entity.HasOne(cp => cp.ChatRoom)
+                      .WithMany(cr => cr.Participants)
+                      .HasForeignKey(cp => cp.ChatRoomId)
+                      .OnDelete(DeleteBehavior.Cascade); // Delete participants if chat room is deleted
+
+                entity.HasOne(cp => cp.User)
+                      .WithMany()
+                      .HasForeignKey(cp => cp.UserId)
+                      .OnDelete(DeleteBehavior.Restrict); // Don't delete user if they are a participant
+
+                entity.HasIndex(e => new { e.ChatRoomId, e.UserId }).IsUnique(); // A user can be a participant only once per chat room
+                entity.HasIndex(e => e.ChatRoomId);
+                entity.HasIndex(e => e.UserId);
+            });
         }
 
         private static void SeedDefaultUsers(ModelBuilder modelBuilder)

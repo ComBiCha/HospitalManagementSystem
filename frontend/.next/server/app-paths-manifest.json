@@ -1,8 +1,11 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
   "/doctor/examination/[id]/page": "app/doctor/examination/[id]/page.js",
-  "/page": "app/page.js",
   "/doctor/portal/page": "app/doctor/portal/page.js",
+  "/page": "app/page.js",
   "/profile/page": "app/profile/page.js",
-  "/patient/portal/page": "app/patient/portal/page.js"
+  "/patient/portal/page": "app/patient/portal/page.js",
+  "/accountant/refunds/page": "app/accountant/refunds/page.js",
+  "/accountant/page": "app/accountant/page.js",
+  "/accountant/deposits/page": "app/accountant/deposits/page.js"
 }

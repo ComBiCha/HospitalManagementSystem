@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
-import { authApi, notificationApi } from '@/lib/api';
+import { authApi, notificationApi, doctorApi } from '@/lib/api'; // Add doctorApi
 import { User, Doctor } from '@/lib/types';
 import {
   User as UserIcon,
@@ -18,6 +18,7 @@ import {
   FileText,
   TrendingUp,
   Bell,
+  Video, // Add Video icon
 } from 'lucide-react';
 
 // Import sections
@@ -25,13 +26,16 @@ import CheckInSection from '@/components/doctor/CheckInSection';
 import NotificationsSection from '@/components/doctor/NotificationsSection';
 import DoctorProfileSection from '@/components/doctor/DoctorProfileSection';
 import AppointmentsSection from '@/components/doctor/AppointmentsSection';
+import DoctorOnlineConsultations from '@/components/doctor/DoctorOnlineConsultations';
+import { useAuth } from '@/hooks/useAuth'; // Import useAuth
 
-type SectionType = 'checkin' | 'notifications' | 'profile' | 'appointments' | 'consultation' | 'patients' | 'statistics' | 'settings';
+type SectionType = 'checkin' | 'notifications' | 'profile' | 'online_consultations' | 'appointments' | 'consultation' | 'patients' | 'statistics' | 'settings';
 
 const sidebarItems = [
   { id: 'checkin' as SectionType, name: 'Check-in / Check-out', icon: Clock, color: 'bg-green-500' },
   { id: 'notifications' as SectionType, name: 'Thông báo', icon: Bell, color: 'bg-amber-500' },
   { id: 'profile' as SectionType, name: 'Thông tin bác sĩ', icon: UserIcon, color: 'bg-emerald-500' },
+  { id: 'online_consultations' as SectionType, name: 'Tư vấn trực tuyến', icon: Video, color: 'bg-indigo-500' }, // New item
   { id: 'appointments' as SectionType, name: 'Lịch khám', icon: Calendar, color: 'bg-blue-500' },
   { id: 'consultation' as SectionType, name: 'Khám bệnh', icon: Stethoscope, color: 'bg-purple-500' },
   { id: 'patients' as SectionType, name: 'Bệnh nhân', icon: Users, color: 'bg-cyan-500' },
@@ -41,22 +45,47 @@ const sidebarItems = [
 
 export default function DoctorPortal() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, isLoading: isAuthLoading } = useAuth(); // Use useAuth hook
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [activeSection, setActiveSection] = useState<SectionType>('checkin');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Keep for doctor details independent of auth
   const [isOnDuty, setIsOnDuty] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Refetch doctor data when user from useAuth is loaded and not null
   useEffect(() => {
-    fetchUserData();
+    if (user && user.doctorId && !isAuthLoading) {
+      fetchDoctorData(user.doctorId);
+    } else if (!user && !isAuthLoading) {
+      toast.error('Bạn cần đăng nhập để truy cập trang này!');
+      router.push('/');
+    }
+  }, [user, isAuthLoading, router]);
+
+  // Original fetchUserData logic, adapted for doctor-specific data
+  const fetchDoctorData = async (doctorId: number) => {
+    setIsLoading(true);
+    try {
+      // Use doctorApi to fetch doctor details
+      const response = await doctorApi.getById(doctorId);
+      setDoctor(response.data); // Assuming response.data is the Doctor object
+    } catch (error) {
+      console.error('Error fetching doctor data:', error);
+      toast.error('Không thể tải dữ liệu bác sĩ!');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // fetchUserData(); // Remove this, rely on useAuth
     checkDutyStatus();
     fetchUnreadCount();
     
     // Poll for unread notifications every 30 seconds
     const interval = setInterval(fetchUnreadCount, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); // Dependency array might need adjustment
 
   const fetchUnreadCount = async () => {
     try {
@@ -67,31 +96,7 @@ export default function DoctorPortal() {
     }
   };
 
-  const fetchUserData = async () => {
-    setIsLoading(true);
-    try {
-      const userResponse = await authApi.getProfile();
-      const userData = userResponse.data;
-      setUser({
-        id: userData.id,
-        username: userData.username,
-        email: userData.email,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        role: userData.role,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        patientId: userData.patientId,
-        doctorId: userData.doctorId,
-      });
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-      toast.error('Không thể tải dữ liệu!');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // fetchUserData removed, now handled by useAuth for user and fetchDoctorData for doctor specific info
 
   const checkDutyStatus = () => {
     setIsOnDuty(true);
@@ -100,6 +105,8 @@ export default function DoctorPortal() {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
+    // useAuth.logout() would be better here if it were a Context Provider
+    // For now, direct localStorage clear is fine for this example
     router.push('/');
     toast.success('Đăng xuất thành công!');
   };
@@ -110,6 +117,8 @@ export default function DoctorPortal() {
   };
 
   const renderSection = () => {
+    if (!user) return null; // Wait for user data from useAuth
+
     if (activeSection === 'checkin') {
       return <CheckInSection onStatusChange={setIsOnDuty} />;
     }
@@ -120,6 +129,16 @@ export default function DoctorPortal() {
     
     if (activeSection === 'profile') {
       return <DoctorProfileSection />;
+    }
+
+    if (activeSection === 'online_consultations') {
+      if (!user.doctorId) {
+        return <div className="bg-white rounded-2xl shadow-xl p-8 border border-emerald-100 text-red-500">
+                 <h3 className="text-2xl font-bold text-gray-900 mb-4">Lỗi</h3>
+                 <p>Không tìm thấy ID bác sĩ cho người dùng này. Vui lòng kiểm tra lại tài khoản.</p>
+               </div>;
+      }
+      return <DoctorOnlineConsultations doctorId={user.doctorId} />;
     }
     
     if (activeSection === 'appointments') {
@@ -136,7 +155,7 @@ export default function DoctorPortal() {
     );
   };
 
-  if (isLoading) {
+  if (isAuthLoading || isLoading) { // Combine loading states
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-100">
         <div className="relative">

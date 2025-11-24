@@ -62,6 +62,9 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -81,6 +84,111 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                     b.HasIndex("DoctorId", "Date");
 
                     b.ToTable("Appointments");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ChatMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ChatRoomId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Content")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsReceivedByDoctor")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsReceivedByPatient")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsSeenByDoctor")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsSeenByPatient")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("MessageType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("SenderId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatRoomId");
+
+                    b.HasIndex("SenderId");
+
+                    b.HasIndex("SentAt");
+
+                    b.ToTable("ChatMessages");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ChatParticipant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ChatRoomId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LeftAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatRoomId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ChatRoomId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ChatParticipants");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ChatRoom", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AppointmentId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId")
+                        .IsUnique();
+
+                    b.ToTable("ChatRooms");
                 });
 
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.Doctor", b =>
@@ -939,6 +1047,55 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ChatMessage", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.ChatRoom", "ChatRoom")
+                        .WithMany("Messages")
+                        .HasForeignKey("ChatRoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.User", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ChatRoom");
+
+                    b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ChatParticipant", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.ChatRoom", "ChatRoom")
+                        .WithMany("Participants")
+                        .HasForeignKey("ChatRoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ChatRoom");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ChatRoom", b =>
+                {
+                    b.HasOne("HospitalManagementSystem.Domain.Entities.Appointment", "Appointment")
+                        .WithOne()
+                        .HasForeignKey("HospitalManagementSystem.Domain.Entities.ChatRoom", "AppointmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Appointment");
+                });
+
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.DoctorAttendance", b =>
                 {
                     b.HasOne("HospitalManagementSystem.Domain.Entities.Doctor", "Doctor")
@@ -1098,6 +1255,13 @@ namespace HospitalManagementSystem.Infrastructure.Migrations
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.Appointment", b =>
                 {
                     b.Navigation("MedicalRecord");
+                });
+
+            modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.ChatRoom", b =>
+                {
+                    b.Navigation("Messages");
+
+                    b.Navigation("Participants");
                 });
 
             modelBuilder.Entity("HospitalManagementSystem.Domain.Entities.MedicalRecord", b =>

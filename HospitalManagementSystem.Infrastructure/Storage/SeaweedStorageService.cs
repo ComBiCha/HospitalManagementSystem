@@ -112,5 +112,22 @@ namespace HospitalManagementSystem.Infrastructure.Storage
             }
             return await resp.Content.ReadAsStreamAsync();
         }
+
+        public async Task<(Stream? Stream, string? ContentType)> GetFileWithContentTypeAsync(string fileId)
+        {
+            string url = fileId.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? fileId
+                : $"http://seaweed-volume:8080/{fileId}";
+            var resp = await _http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogError("Failed to download file from SeaweedFS. URL: {Url}, Status: {StatusCode}", url, resp.StatusCode);
+                return (null, null);
+            }
+
+            var stream = await resp.Content.ReadAsStreamAsync();
+            var contentType = resp.Content.Headers.ContentType?.ToString();
+            return (stream, contentType);
+        }
     }
 }

@@ -63,6 +63,145 @@ namespace HospitalManagementSystem.API.Controllers
             return Ok(payment.Status);
         }
 
+        [HttpPost("online/create-intent")]
+        [Authorize(Roles = "Patient")]
+        public async Task<ActionResult> CreateOnlineAppointmentPaymentIntent([FromBody] CreateBookingFeeRequest request)
+        {
+            try
+            {
+                var patientId = GetCurrentUserPatientId();
+                if (!patientId.HasValue)
+                {
+                    return Unauthorized("Patient ID not found in token.");
+                }
+
+                var appointment = await _appointmentRepository.GetByIdAsync(request.AppointmentId);
+                if (appointment == null)
+                {
+                    return NotFound(new { message = "Appointment not found." });
+                }
+
+                if (appointment.PatientId != patientId.Value)
+                {
+                    return Forbid("You can only pay for your own appointments.");
+                }
+
+                if (appointment.Type != AppointmentType.Online)
+                {
+                    return BadRequest(new { message = "This endpoint is only for online appointments." });
+                }
+                
+                if (appointment.Status != "PendingPayment")
+                {
+                    return BadRequest(new { message = $"Appointment status is '{appointment.Status}', not 'PendingPayment'." });
+                }
+
+                if (appointment.PaymentExpiresAt.HasValue && appointment.PaymentExpiresAt < DateTime.UtcNow)
+                {
+                    return BadRequest(new { message = "The payment window for this appointment has expired." });
+                }
+
+                Payment paymentToProcess = null;
+                // Attempt to find the most recent pending payment for this appointment
+                var pendingPayment = await _paymentRepository.GetLatestPendingBookingFeePaymentForAppointmentAsync(request.AppointmentId);
+
+                if (pendingPayment != null)
+                {
+                    // Case 1: Existing pending payment has a StripePaymentIntentId
+                    if (!string.IsNullOrEmpty(pendingPayment.StripePaymentIntentId))
+                    {
+                        var intent = await _stripePaymentService.GetPaymentIntentAsync(pendingPayment.StripePaymentIntentId);
+                        if (intent != null && (intent.Status == "requires_payment_method" || intent.Status == "requires_action" || intent.Status == "processing"))
+                        {
+                            _logger.LogInformation("Reusing existing PaymentIntent {PaymentIntentId} for Appointment {AppointmentId}. Payment {PaymentId}.", intent.Id, request.AppointmentId, pendingPayment.Id);
+                            paymentToProcess = pendingPayment; // Reuse the existing payment record
+                            return Ok(new { clientSecret = intent.ClientSecret });
+                        }
+                        else
+                        {
+                            // Intent is not reusable or has a final status (e.g., succeeded, canceled), mark payment as failed
+                            pendingPayment.Status = PaymentStatuses.Failed;
+                            pendingPayment.FailureReason = $"Stripe PaymentIntent status not reusable: {intent?.Status ?? "unknown"}";
+                            pendingPayment.UpdatedAt = DateTime.UtcNow;
+                            await _paymentRepository.UpdateAsync(pendingPayment);
+                            _logger.LogInformation("Existing PaymentIntent {PaymentIntentId} for Appointment {AppointmentId} found not reusable (status: {Status}). Marking payment {PaymentId} as failed.", intent?.Id, request.AppointmentId, pendingPayment.Id, intent?.Status);
+                            // Proceed to create a new payment
+                        }
+                    }
+                    else
+                    {
+                        // Case 2: Existing pending payment without StripePaymentIntentId (just created by CreateOnlineAppointmentAsync)
+                        // This is a fresh pending payment, proceed to create a Stripe PaymentIntent for it.
+                        _logger.LogInformation("Existing pending Payment {PaymentId} for Appointment {AppointmentId} found without StripePaymentIntentId. Creating one.", pendingPayment.Id, request.AppointmentId);
+                        paymentToProcess = pendingPayment;
+                    }
+                }
+                else
+                {
+                    // No pending payment found, create a new one.
+                    _logger.LogInformation("No pending Payment found for Appointment {AppointmentId}. Creating a new one.", request.AppointmentId);
+                    paymentToProcess = new Payment
+                    {
+                        PatientId = appointment.PatientId,
+                        AppointmentId = appointment.Id,
+                        PaymentType = PaymentTypes.BookingFee,
+                        Amount = appointment.BookingFee,
+                        PaymentMethod = "Stripe",
+                        Status = PaymentStatuses.Pending,
+                        Description = $"Booking fee for online appointment on {appointment.Date:yyyy-MM-dd HH:mm}",
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    paymentToProcess = await _paymentRepository.CreateAsync(paymentToProcess);
+                    _logger.LogInformation("Created new Payment record {PaymentId} for Appointment {AppointmentId}", paymentToProcess.Id, request.AppointmentId);
+                }
+
+                // At this point, paymentToProcess is either a reused pending payment or a newly created one.
+                // If it doesn't have a StripePaymentIntentId (either it's new, or an old pending one without an ID),
+                // create a new Stripe PaymentIntent for it.
+                if (paymentToProcess == null)
+                {
+                    // Should not happen – throw or handle error appropriately
+                    throw new InvalidOperationException("paymentToProcess is not assigned.");
+                }
+                if (string.IsNullOrEmpty(paymentToProcess.StripePaymentIntentId))
+                {
+                    var paymentIntent = await _stripePaymentService.CreatePaymentIntentAsync(
+                        (long)paymentToProcess.Amount,
+                        "vnd",
+                        $"Booking fee for online appointment #{appointment.Id}",
+                        new Dictionary<string, string>
+                        {
+                            { "payment_id", paymentToProcess.Id.ToString() },
+                            { "appointment_id", appointment.Id.ToString() },
+                            { "patient_id", appointment.PatientId.ToString() }
+                        });
+
+                    paymentToProcess.StripePaymentIntentId = paymentIntent.Id;
+                    await _paymentRepository.UpdateAsync(paymentToProcess);
+                    _logger.LogInformation("Created Stripe PaymentIntent {PaymentIntentId} and linked to Payment {PaymentId}", paymentIntent.Id, paymentToProcess.Id);
+                    return Ok(new { clientSecret = paymentIntent.ClientSecret });
+                }
+
+                // If we reach here, it means we found and reused a payment intent from an existing record (e.g. status requires_action)
+                // and its clientSecret was returned earlier. This branch should ideally not be reached if previous logic is correct
+                // but is a safeguard.
+                _logger.LogWarning("Reached unexpected branch in CreateOnlineAppointmentPaymentIntent for Appointment {AppointmentId}, Payment {PaymentId}. Returning clientSecret from existing intent.", request.AppointmentId, paymentToProcess.Id);
+                var finalIntent = await _stripePaymentService.GetPaymentIntentAsync(paymentToProcess.StripePaymentIntentId);
+                return Ok(new { clientSecret = finalIntent.ClientSecret });
+
+            }
+            catch (StripeException ex)
+            {
+                _logger.LogError(ex, "Stripe error creating payment intent for appointment {AppointmentId}", request.AppointmentId);
+                return StatusCode(500, new { message = $"Stripe error: {ex.StripeError?.Message}" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating payment intent for appointment {AppointmentId}", request.AppointmentId);
+                return StatusCode(500, new { message = "An internal error occurred." });
+            }
+        }
+
         [HttpPost("booking-fee")]
         [Authorize(Roles = "Admin,Patient")]
         public async Task<ActionResult<CreatePaymentResponse>> CreateBookingFeePayment(CreateBookingFeeRequest request)
@@ -277,6 +416,11 @@ namespace HospitalManagementSystem.API.Controllers
                         var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
                         await HandlePaymentIntentSucceeded(paymentIntent);
                         break;
+
+                    case Events.PaymentIntentPaymentFailed:
+                        var failedPaymentIntent = stripeEvent.Data.Object as PaymentIntent;
+                        await HandlePaymentIntentPaymentFailed(failedPaymentIntent);
+                        break;
                 }
 
                 return Ok();
@@ -395,7 +539,65 @@ namespace HospitalManagementSystem.API.Controllers
 
         private async Task HandlePaymentIntentSucceeded(PaymentIntent? paymentIntent)
         {
-            await Task.CompletedTask;
+            if (paymentIntent?.Metadata?.ContainsKey("payment_id") != true) return;
+
+            var paymentId = int.Parse(paymentIntent.Metadata["payment_id"]);
+            var payment = await _paymentRepository.GetByIdAsync(paymentId);
+
+            if (payment != null && payment.Status == PaymentStatuses.Pending)
+            {
+                payment.Status = PaymentStatuses.Completed;
+                payment.TransactionId = paymentIntent.Id;
+                payment.StripePaymentIntentId = paymentIntent.Id;
+                payment.PaidAt = DateTime.UtcNow;
+                await _paymentRepository.UpdateAsync(payment);
+
+                if (payment.AppointmentId.HasValue)
+                {
+                    var appointment = await _appointmentRepository.GetByIdAsync(payment.AppointmentId.Value);
+                    if (appointment != null)
+                    {
+                        appointment.Status = "Scheduled";
+                        appointment.BookingPaymentId = payment.Id;
+                        appointment.PaymentExpiresAt = null;
+                        await _appointmentRepository.UpdateAsync(appointment);
+                    }
+                }
+
+                await _rabbitMQService.PublishPaymentProcessedAsync(new PaymentProcessedEvent
+                {
+                    BillingId = payment.Id,
+                    AppointmentId = payment.AppointmentId ?? 0,
+                    PatientId = payment.PatientId,
+                    Amount = payment.Amount,
+                    PaymentMethod = payment.PaymentMethod,
+                    TransactionId = payment.TransactionId,
+                    ProcessedAt = DateTime.UtcNow,
+                    ProcessedByUserId = payment.PatientId,
+                    ProcessedByRole = "Patient",
+                    PaymentSource = "Stripe_PaymentIntent",
+                    SessionId = paymentIntent.Id
+                });
+
+                _logger.LogInformation("Webhook: PaymentIntent {PaymentIntentId} succeeded for Payment {PaymentId}", paymentIntent.Id, paymentId);
+            }
+        }
+
+        private async Task HandlePaymentIntentPaymentFailed(PaymentIntent? paymentIntent)
+        {
+            if (paymentIntent?.Metadata?.ContainsKey("payment_id") != true) return;
+
+            var paymentId = int.Parse(paymentIntent.Metadata["payment_id"]);
+            var payment = await _paymentRepository.GetByIdAsync(paymentId);
+
+            if (payment != null && payment.Status == PaymentStatuses.Pending)
+            {
+                payment.Status = PaymentStatuses.Failed;
+                payment.FailureReason = paymentIntent.LastPaymentError?.Message ?? "Payment failed in Stripe.";
+                await _paymentRepository.UpdateAsync(payment);
+
+                _logger.LogWarning("Webhook: PaymentIntent {PaymentIntentId} failed for Payment {PaymentId}. Reason: {Reason}", paymentIntent.Id, paymentId, payment.FailureReason);
+            }
         }
 
         private int GetCurrentUserId()

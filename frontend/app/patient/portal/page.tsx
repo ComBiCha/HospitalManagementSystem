@@ -14,6 +14,7 @@ import {
   Settings,
   LogOut,
   Activity,
+  Video,
 } from 'lucide-react';
 
 // Import sections
@@ -23,11 +24,13 @@ import MedicalRecordsSection from '@/components/patient/MedicalRecordsSection';
 import IdentifiersSection from '@/components/patient/IdentifiersSection';
 import HealthMetricsSection from '@/components/patient/HealthMetricsSection';
 import SettingsSection from '@/components/patient/SettingsSection';
+import OnlineBookingSection from '@/components/patient/OnlineBookingSection';
 
-type SectionType = 'profile' | 'appointments' | 'records' | 'identifiers' | 'health' | 'settings';
+type SectionType = 'profile' | 'appointments' | 'records' | 'identifiers' | 'health' | 'settings' | 'online-booking';
 
 const sidebarItems = [
   { id: 'profile' as SectionType, name: 'Thông tin cá nhân', icon: UserIcon, color: 'bg-blue-500' },
+  { id: 'online-booking' as SectionType, name: 'Dịch vụ trực tuyến', icon: Video, color: 'bg-teal-500' },
   { id: 'appointments' as SectionType, name: 'Lịch hẹn', icon: Calendar, color: 'bg-green-500' },
   { id: 'records' as SectionType, name: 'Hồ sơ bệnh án', icon: FileText, color: 'bg-purple-500' },
   { id: 'identifiers' as SectionType, name: 'Định danh y tế', icon: Fingerprint, color: 'bg-orange-500' },
@@ -124,6 +127,8 @@ export default function PatientPortal() {
     switch (activeSection) {
       case 'profile':
         return <ProfileSection user={user} patient={patient} onRefresh={fetchUserData} />;
+      case 'online-booking':
+        return <OnlineBookingSection patient={patient} />;
       case 'appointments':
         return <AppointmentsSection patientId={patient?.id || null} />;
       case 'records':

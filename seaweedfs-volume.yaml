@@ -13,6 +13,16 @@ spec:
       labels:
         app: seaweed-volume
     spec:
+      # --- BẮT ĐẦU PHẦN THÊM VÀO ---
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        # Lệnh này đảm bảo user 1000 (seaweedfs) có toàn quyền ghi vào ổ cứng /data
+        command: ["sh", "-c", "chown -R 1000:1000 /data && chmod -R 777 /data"]
+        volumeMounts:
+        - name: volume-data
+          mountPath: /data
+      # --- KẾT THÚC PHẦN THÊM VÀO ---
       containers:
       - name: seaweed-volume
         image: chrislusf/seaweedfs:latest

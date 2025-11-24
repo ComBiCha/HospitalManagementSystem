@@ -1,4 +1,5 @@
 using HospitalManagementSystem.Domain.Payments;
+using Stripe;
 using Stripe.Checkout;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -47,6 +48,40 @@ namespace HospitalManagementSystem.Infrastructure.Services
 
             var service = new SessionService();
             return service.CreateAsync(options);
+        }
+
+        public Task<PaymentIntent> CreatePaymentIntentAsync(long amount, string currency, string description, Dictionary<string, string> metadata)
+        {
+            var options = new PaymentIntentCreateOptions
+            {
+                Amount = amount,
+                Currency = currency,
+                Description = description,
+                Metadata = metadata,
+                PaymentMethodTypes = new List<string> { "card" },
+            };
+
+            var service = new PaymentIntentService();
+            return service.CreateAsync(options);
+        }
+
+        public Task<Refund> RefundPaymentAsync(string paymentIntentId, long amount, string reason)
+        {
+            var options = new RefundCreateOptions
+            {
+                PaymentIntent = paymentIntentId,
+                Amount = amount,
+                Reason = RefundReasons.RequestedByCustomer,
+            };
+
+            var service = new RefundService();
+            return service.CreateAsync(options);
+        }
+
+        public Task<PaymentIntent> GetPaymentIntentAsync(string paymentIntentId)
+        {
+            var service = new PaymentIntentService();
+            return service.GetAsync(paymentIntentId);
         }
     }
 }

@@ -7,6 +7,7 @@ namespace HospitalManagementSystem.Domain.Entities
         public int DoctorId { get; set; }
         public DateTime Date { get; set; }
         public string Status { get; set; } = "PendingPayment"; // PendingPayment, Scheduled, Completed, Cancelled, ExpiredPayment
+        public AppointmentType Type { get; set; } = AppointmentType.InPerson;
         
         public decimal BookingFee { get; set; } = 50000; // Default 50k VND
         public int? BookingPaymentId { get; set; } // Link to Payment record
@@ -30,5 +31,11 @@ namespace HospitalManagementSystem.Domain.Entities
         Completed,
         Cancelled,
         Rescheduled
+    }
+
+    public enum AppointmentType
+    {
+        InPerson,
+        Online
     }
 }

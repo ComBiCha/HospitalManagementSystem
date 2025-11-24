@@ -14,6 +14,7 @@ namespace HospitalManagementSystem.Domain.Repositories
         Task<Payment?> GetPendingDepositByAppointmentIdAsync(int appointmentId);
         Task<Payment?> GetPendingOrCompletedDepositByAppointmentIdAsync(int appointmentId);
         Task<IEnumerable<Payment>> GetCompletedDepositsByAppointmentIdAsync(int appointmentId);
+        Task<Payment?> GetLatestPendingBookingFeePaymentForAppointmentAsync(int appointmentId);
         Task<IEnumerable<Payment>> GetByStatusAsync(string status);
         Task<Payment> CreateAsync(Payment payment);
         Task<Payment?> UpdateAsync(Payment payment);

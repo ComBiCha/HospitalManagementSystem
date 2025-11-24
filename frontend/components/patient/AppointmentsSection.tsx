@@ -202,7 +202,7 @@ export default function AppointmentsSection({ patientId }: AppointmentsSectionPr
   const fetchDoctorAvailableSlots = async (doctorId: number, date: string) => {
     try {
       const dateOnly = date.split('T')[0]; // Ensure YYYY-MM-DD format
-      const response = await api.get(`/appointmentbooking/doctors/${doctorId}/available-slots?date=${dateOnly}`);
+      const response = await api.get(`/appointmentbooking/doctors/${doctorId}/available-slots?date=${dateOnly}&appointmentType=0`);
       setTimeSlots(response.data || []);
     } catch (error) {
       console.error('Error fetching doctor available slots:', error);

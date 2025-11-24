@@ -2,6 +2,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using HospitalManagementSystem.Application.Services;
 using HospitalManagementSystem.Application.DTOs;
+using System.Security.Claims;
+using HospitalManagementSystem.Application.DTOs.Appointment;
+using HospitalManagementSystem.Domain.Entities;
+using Microsoft.AspNetCore.Http;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -112,16 +116,77 @@ namespace HospitalManagementSystem.API.Controllers
         }
 
         [HttpGet("doctors/{doctorId}/available-slots")]
-        public async Task<ActionResult<IEnumerable<TimeSlotDto>>> GetDoctorAvailableSlots(int doctorId, [FromQuery] DateTime date)
+        public async Task<ActionResult<IEnumerable<TimeSlotDto>>> GetDoctorAvailableSlots(int doctorId, [FromQuery] DateTime date, [FromQuery] AppointmentType appointmentType)
         {
             try
             {
-                var availableSlots = await _appointmentService.GetDoctorAvailableSlotsAsync(doctorId, date);
+                var availableSlots = await _appointmentService.GetDoctorAvailableSlotsAsync(doctorId, date, appointmentType);
                 return Ok(availableSlots);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting available slots for doctor {DoctorId} on {Date}", doctorId, date);
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpPost("online")]
+        public async Task<ActionResult<Appointment>> BookOnlineAppointment([FromBody] CreateOnlineAppointmentDto dto)
+        {
+            try
+            {
+                var patientIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+                if (patientIdClaim == null || !int.TryParse(patientIdClaim.Value, out var patientId))
+                {
+                    return Unauthorized("Invalid user claims.");
+                }
+
+                var appointment = await _appointmentService.CreateOnlineAppointmentAsync(dto, patientId);
+                return CreatedAtAction(nameof(BookOnlineAppointment), new { id = appointment.Id }, appointment);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error booking online appointment");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        [HttpPost("{id}/cancel")]
+        public async Task<IActionResult> CancelAppointment(int id)
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+                var patientIdClaim = User.FindFirst("PatientId");
+
+                if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out var userId) ||
+                    patientIdClaim == null || !int.TryParse(patientIdClaim.Value, out var patientId))
+                {
+                    return Unauthorized(new { message = "Invalid user claims." });
+                }
+
+                await _appointmentService.CancelAppointmentAsync(id, patientId, "Patient", userId);
+                return Ok(new { message = "Appointment cancelled successfully and refund is being processed if applicable." });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return StatusCode(StatusCodes.Status404NotFound, new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return StatusCode(StatusCodes.Status400BadRequest, new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cancelling appointment {AppointmentId}", id);
                 return StatusCode(500, "Internal server error");
             }
         }

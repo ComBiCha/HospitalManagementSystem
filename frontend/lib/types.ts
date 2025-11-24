@@ -24,6 +24,7 @@ export interface UserInfo {
   role: string
   patientId?: number
   doctorId?: number
+  doctor?: Doctor; // Add this line
 }
 
 // Patient types
@@ -57,6 +58,7 @@ export interface Appointment {
   doctorId: number;
   date: string;
   status: string;
+  type?: number;
   createdAt: string;
   updatedAt: string;
   doctor?: Doctor;
@@ -288,4 +290,50 @@ export interface EligibleAppointment {
   pendingPaymentStatus?: string;
   stripeCheckoutUrl?: string;
   stripeSessionExpiresAt?: string;
+}
+
+// Online Booking types
+export interface BookingData {
+  specialty?: string;
+  doctor?: Doctor;
+  appointmentDate?: Date;
+  appointmentType?: number; // 0 for InPerson, 1 for Online
+}
+
+// Chat types
+export interface ChatRoom {
+  id: number;
+  appointmentId: number;
+  createdAt: string;
+}
+
+export interface SenderInfo {
+    id: number;
+    firstName: string;
+    lastName: string;
+    role: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  chatRoomId: number;
+  senderId: number;
+  content?: string;
+  imageUrl?: string;
+  sentAt: string;
+  messageType: 'text' | 'image' | 'text_image' | 'system';
+  isReceivedByPatient: boolean;
+  isSeenByPatient: boolean;
+  isReceivedByDoctor: boolean;
+  isSeenByDoctor: boolean;
+  sender: SenderInfo;
+}
+
+export interface ChatParticipant {
+  id: number;
+  chatRoomId: number;
+  userId: number;
+  joinedAt: string;
+  leftAt?: string;
+  user?: UserInfo; // Assuming UserInfo can be used for participant details
 }

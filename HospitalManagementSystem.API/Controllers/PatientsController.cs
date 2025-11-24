@@ -8,6 +8,9 @@ using HospitalManagementSystem.Application.DTOs;
 using HospitalManagementSystem.Domain.Fhir;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
+using HospitalManagementSystem.Infrastructure.Persistence;
+using HospitalManagementSystem.Infrastructure.Persistence.Extensions;
 
 namespace HospitalManagementSystem.API.Controllers
 {
@@ -21,6 +24,7 @@ namespace HospitalManagementSystem.API.Controllers
         private readonly PatientService _patientService;
         private readonly EhrFhirApplicationService _ehrFhirApplicationService;
         private readonly ILogger<PatientsController> _logger;
+        private readonly HospitalDbContext _context;
 
         public PatientsController(
             IPatientRepository patientRepository,
@@ -28,7 +32,8 @@ namespace HospitalManagementSystem.API.Controllers
             ICacheService cacheService,
             PatientService patientService,
             EhrFhirApplicationService ehrFhirApplicationService,
-            ILogger<PatientsController> logger)
+            ILogger<PatientsController> logger,
+            HospitalDbContext context)
         {
             _patientRepository = patientRepository;
             _authRepository = authRepository;
@@ -36,6 +41,26 @@ namespace HospitalManagementSystem.API.Controllers
             _patientService = patientService;
             _ehrFhirApplicationService = ehrFhirApplicationService;
             _logger = logger;
+            _context = context;
+        }
+
+        [HttpGet("search")]
+        [Authorize(Roles = "Doctor,Admin")]
+        public async Task<ActionResult<IEnumerable<string>>> SearchPatientNames([FromQuery] string name)
+        {
+            if (string.IsNullOrWhiteSpace(name) || name.Length < 2)
+            {
+                return Ok(Enumerable.Empty<string>());
+            }
+
+            var patientNames = await _context.Patients
+                .Where(p => UnaccentExtension.Unaccent(p.Name).ToLower().Contains(UnaccentExtension.Unaccent(name).ToLower()))
+                .Select(p => p.Name)
+                .Distinct()
+                .Take(10)
+                .ToListAsync();
+
+            return Ok(patientNames);
         }
 
         [HttpGet("verify-ehr-id")]

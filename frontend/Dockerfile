@@ -3,11 +3,17 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Add ARG for the publishable key
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+
+# Set it as an environment variable for the build process
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+
 # Copy package files
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci
 
 # Copy source code
 COPY . .

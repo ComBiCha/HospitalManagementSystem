@@ -12,6 +12,16 @@ spec:
       labels:
         app: seaweed-filer
     spec:
+      # --- PHẦN THÊM VÀO ĐỂ FIX QUYỀN ---
+      initContainers:
+      - name: fix-permissions
+        image: busybox
+        # Cấp quyền cho user 1000 (user của seaweedfs) được ghi vào thư mục /data
+        command: ["sh", "-c", "chown -R 1000:1000 /data && chmod -R 777 /data"]
+        volumeMounts:
+        - name: filer-data
+          mountPath: /data
+      # ----------------------------------
       containers:
       - name: seaweed-filer
         image: chrislusf/seaweedfs:latest

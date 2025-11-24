@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { Appointment } from '@/lib/types';
@@ -20,7 +20,14 @@ import {
   Stethoscope,
 } from 'lucide-react';
 
-const initialFilters = {
+type FilterType = {
+  startDate: string;
+  endDate: string;
+  status: string;
+  searchTerm: string;
+};
+
+const initialFilters: FilterType = {
   startDate: '',
   endDate: '',
   status: 'all',
@@ -30,7 +37,14 @@ const initialFilters = {
 export default function AppointmentsSection() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState(initialFilters);
+  const [filters, setFilters] = useState<FilterType>(initialFilters);
+  
+  // Autocomplete suggestions
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showPatientModal, setShowPatientModal] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -38,7 +52,52 @@ export default function AppointmentsSection() {
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = 20;
 
-  const fetchAppointments = useCallback(async (page = 1, appliedFilters = filters) => {
+  // Debounce for patient name suggestions
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (filters.searchTerm.length < 2) {
+        setSuggestions([]);
+        return;
+      }
+
+      setIsSuggestionsLoading(true);
+      try {
+        const response = await api.get('/Patients/search', {
+          params: { name: filters.searchTerm },
+        });
+        setSuggestions(response.data);
+        setShowSuggestions(true);
+      } catch (error) {
+        console.error('Error fetching suggestions:', error);
+        setSuggestions([]);
+      } finally {
+        setIsSuggestionsLoading(false);
+      }
+    };
+
+    const timerId = setTimeout(() => {
+      fetchSuggestions();
+    }, 300); // 300ms delay
+
+    return () => {
+      clearTimeout(timerId);
+    };
+  }, [filters.searchTerm]);
+
+  // Hide suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const fetchAppointments = useCallback(async (page = 1, appliedFilters: FilterType) => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({
@@ -47,14 +106,10 @@ export default function AppointmentsSection() {
       });
 
       if (appliedFilters.startDate) {
-        const start = new Date(appliedFilters.startDate);
-        start.setHours(0, 0, 0, 0);
-        params.append('startDate', start.toISOString());
+        params.append('startDate', new Date(appliedFilters.startDate).toISOString());
       }
       if (appliedFilters.endDate) {
-        const end = new Date(appliedFilters.endDate);
-        end.setHours(23, 59, 59, 999);
-        params.append('endDate', end.toISOString());
+        params.append('endDate', new Date(appliedFilters.endDate).toISOString());
       }
       if (appliedFilters.status && appliedFilters.status !== 'all') {
         params.append('status', appliedFilters.status);
@@ -77,6 +132,7 @@ export default function AppointmentsSection() {
     }
   }, []);
 
+  // Initial fetch and fetch on page change
   useEffect(() => {
     fetchAppointments(currentPage, filters);
   }, [currentPage, fetchAppointments]);
@@ -84,6 +140,17 @@ export default function AppointmentsSection() {
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSuggestionClick = (name: string) => {
+    const newFilters = { ...filters, searchTerm: name };
+    setFilters(newFilters);
+    setShowSuggestions(false);
+    // Immediately trigger the search
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+    fetchAppointments(1, newFilters);
   };
 
   const handleApplyFilters = () => {
@@ -229,7 +296,7 @@ export default function AppointmentsSection() {
               <option value="Hospitalized">Nhập viện</option>
             </select>
           </div>
-          <div>
+          <div className="relative" ref={searchContainerRef}>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Tìm kiếm</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -238,9 +305,32 @@ export default function AppointmentsSection() {
                 name="searchTerm"
                 value={filters.searchTerm}
                 onChange={handleFilterChange}
+                onFocus={() => setShowSuggestions(true)}
                 placeholder="Tên bệnh nhân..."
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                autoComplete="off"
               />
+              {showSuggestions && filters.searchTerm.length > 1 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                  {isSuggestionsLoading ? (
+                    <div className="p-4 text-center text-gray-500">Đang tìm...</div>
+                  ) : suggestions.length > 0 ? (
+                    <ul>
+                      {suggestions.map((name, index) => (
+                        <li
+                          key={index}
+                          onClick={() => handleSuggestionClick(name)}
+                          className="px-4 py-2 hover:bg-emerald-50 cursor-pointer"
+                        >
+                          {name}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="p-4 text-center text-gray-500">Không tìm thấy bệnh nhân.</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
